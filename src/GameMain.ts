@@ -157,7 +157,9 @@ export class GameMain extends Laya.Script {
         
         // 使用更小的半径和更细腻的样式
         const radius = 60; // 减小按钮大小
-        btnBg.graphics.drawCircle(0, 0, radius, "rgba(50, 50, 50, 0.1)");
+        btnBg.graphics.drawCircle(0, 0, radius, "rgba(50, 50, 50, 0.1)");// 开火颜色
+        // 添加极细的描边
+        btnBg.graphics.drawCircle(0, 0, radius, null, "rgba(50, 50, 50, 0.2)", 0.5);
         this.fireBtn.addChild(btnBg);
         
         // 加载闪电图标
@@ -288,6 +290,8 @@ export class GameMain extends Laya.Script {
         let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
         btnBg.graphics.clear();
         btnBg.graphics.drawCircle(0, 0, 60, "rgba(255, 100, 100, 0.9)");
+        // 添加按下状态的描边
+        btnBg.graphics.drawCircle(0, 0, 60, null, "rgba(255, 100, 100, 0.3)", 0.5);
         
         // 播放开火音效并发射子弹
         this.onFire();
@@ -298,6 +302,8 @@ export class GameMain extends Laya.Script {
         let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
         btnBg.graphics.clear();
         btnBg.graphics.drawCircle(0, 0, 60, "rgba(50, 50, 50, 0.3)");
+        // 恢复正常状态的描边
+        btnBg.graphics.drawCircle(0, 0, 60, null, "rgba(50, 50, 50, 0.2)", 0.5);
     }
 
     private onFire(): void {

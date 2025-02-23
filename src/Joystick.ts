@@ -31,7 +31,9 @@ export class Joystick extends Laya.Script {
         this.joystickBg.mouseThrough = true;
         
         // 使用更低的透明度（0.3）和更细腻的灰色
-        this.joystickBg.graphics.drawCircle(0, 0, this.maxRadius, "rgba(50, 50, 50, 0.6)");
+        this.joystickBg.graphics.drawCircle(0, 0, this.maxRadius, "rgba(50, 50, 50, 0.7)");
+        // 添加极细的描边
+        this.joystickBg.graphics.drawCircle(0, 0, this.maxRadius, null, "rgba(50, 50, 50, 0.3)", 0.5);
         
         // 动态计算摇杆位置
         const horizontalMargin = Laya.stage.width * 0.17; // 距离左边缘17%的距离
@@ -44,7 +46,10 @@ export class Joystick extends Laya.Script {
         this.joystickBar.name = "JoystickBar";
         
         // 使用浅灰色和更低的透明度
-        this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, "rgba(225, 225, 225, 0.4)");
+        this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, "rgba(225, 225, 225, 0.5)");
+        // 添加极细的描边
+        this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, null, "rgba(225, 225, 225, 0.3)", 0.5);
+        
         this.joystickBar.pos(this.joystickBg.x, this.joystickBg.y);
         this.owner.addChild(this.joystickBar);
 
