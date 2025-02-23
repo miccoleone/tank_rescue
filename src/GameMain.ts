@@ -167,7 +167,7 @@ export class GameMain extends Laya.Script {
         lightning.name = "LightningIcon";
         lightning.skin = "resources/lightning-icon.png";
         // 设置图标大小为按钮半径的0.8倍，使其更小巧
-        const iconSize = radius * 0.9;
+        const iconSize = radius * 1.1;
         lightning.width = iconSize;
         lightning.height = iconSize;
         lightning.pivot(iconSize/2, iconSize/2);

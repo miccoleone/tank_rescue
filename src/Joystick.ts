@@ -46,7 +46,7 @@ export class Joystick extends Laya.Script {
         this.joystickBar.name = "JoystickBar";
         
         // 使用浅灰色和更低的透明度
-        this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, "rgba(225, 225, 225, 0.5)");
+        this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, "rgba(225, 225, 225, 0.7)");
         // 添加极细的描边
         this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, null, "rgba(225, 225, 225, 0.3)", 0.5);
         
