@@ -1,4 +1,19 @@
 {
-  "name": "LayaProject1",
-  "startupScene": "res://9b931ecf-fde9-44dd-acf3-15f8dc807965"
+  "name": "方块大逃亡丶坦克来袭",
+  "startupScene": "res://9b931ecf-fde9-44dd-acf3-15f8dc807965",
+  "android": {
+    "targetArchitectures": {
+      "ARMv7": true,
+      "ARM64": false,
+      "x86": false,
+      "x86-64": false
+    },
+    "exportFormat": "APK"
+  },
+  "wxgame": {
+    "appid": "wx9f72d388ea6fb95c"
+  },
+  "bytedancegame": {
+    "appid": "ttd868aed5476370af02"
+  }
 }
