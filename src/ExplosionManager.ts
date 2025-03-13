@@ -1,4 +1,6 @@
 const { regClass } = Laya;
+import { Pilot } from "./Pilot";
+import { PilotPool } from "./PilotPool";
 
 @regClass()
 export class ExplosionManager {
@@ -12,6 +14,7 @@ export class ExplosionManager {
     private isResourceLoaded: boolean = false;
     private texture: Laya.Texture;
     private frames: Laya.Texture[] = [];
+    private boomSound: Laya.SoundChannel;
 
     private constructor() {
         // 预加载爆炸动画资源
@@ -65,7 +68,7 @@ export class ExplosionManager {
         }
     }
     
-    public playExplosion(x: number, y: number, parent: Laya.Sprite): void {
+    public playExplosion(x: number, y: number, parent: Laya.Sprite, isEnemyTank: boolean = false): void {
         if (!this.isResourceLoaded || this.frames.length === 0) {
             console.warn("ExplosionManager: 爆炸动画资源尚未加载完成");
             return;
@@ -73,9 +76,8 @@ export class ExplosionManager {
 
         try {
             // 播放爆炸音效
-            this.BoomSound = Laya.SoundManager.playSound("resources/explosion.mp3", 1);
-            this.BoomSound.volume = 2;
-
+            this.boomSound = Laya.SoundManager.playSound("resources/explosion.mp3", 1);
+            this.boomSound.volume = 1;
 
             // 创建动画容器
             const container = new Laya.Sprite();
@@ -115,6 +117,11 @@ export class ExplosionManager {
                     // 动画完成，清理资源
                     Laya.timer.clear(this, frameLoop);
                     container.destroy();
+
+                    // 如果是敌方坦克爆炸，生成驾驶员
+                    if (isEnemyTank) {
+                        this.spawnPilots(x, y, parent);
+                    }
                     return;
                 }
 
@@ -132,5 +139,20 @@ export class ExplosionManager {
         } catch (error) {
             console.error("ExplosionManager: 播放动画失败:", error);
         }
+    }
+
+    private spawnPilots(x: number, y: number, parent: Laya.Sprite): void {
+        // 从对象池获取驾驶员
+        const pilot = PilotPool.instance.getPilot();
+        
+        // 计算散落位置（在爆炸点周围随机位置）
+        const angle = Math.random() * Math.PI * 2;
+        const distance = Math.random() * 30 + 20; // 20-50像素的随机距离
+        const pilotX = x + Math.cos(angle) * distance;
+        const pilotY = y + Math.sin(angle) * distance;
+        
+        // 设置位置并添加到场景
+        pilot.pos(pilotX, pilotY);
+        parent.addChild(pilot);
     }
 }

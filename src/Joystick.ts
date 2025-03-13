@@ -6,9 +6,9 @@ export class Joystick extends Laya.Script {
     private joystickBar!: Laya.Sprite;
     private touchId: number = -1;
     private originPos!: Laya.Point;
-    private maxRadius: number = 60; // 减小摇杆底座大小
-    private stickRadius: number = 25; // 减小摇杆头的大小
-    private maxDistance: number = 35; // 减小最大移动距离
+    private maxRadius: number = 60;
+    private stickRadius: number = 25;
+    private maxDistance: number = 35;
     private isMoving: boolean = false;
     private currentAngle: number = 0;
     private currentStrength: number = 0;
@@ -22,58 +22,60 @@ export class Joystick extends Laya.Script {
     }
 
     private initJoystick(): void {
-        // 创建摇杆背景（更透明）
+        // 创建摇杆背景
         this.joystickBg = new Laya.Sprite();
         this.joystickBg.name = "JoystickBg";
         
-        // 设置鼠标事件支持
-        this.joystickBg.mouseEnabled = true;
-        this.joystickBg.mouseThrough = true;
-        
-        // 保留绘制但完全透明，用于保持点击区域
-        this.joystickBg.graphics.drawCircle(0, 0, this.maxRadius, "rgba(50, 50, 50, 0)");
-        
         // 添加背景图片
         const bgImage = new Laya.Image();
-        bgImage.skin = "resources/joystick_bg.png";
-        const bgScale = (this.maxRadius * 2) / 256;  // 假设原图是256x256
-        bgImage.scale(bgScale, bgScale);
-        bgImage.pivot(128, 128);  // 使用原图尺寸的一半作为轴心点
-        bgImage.alpha = 0.2;
+        bgImage.skin = "resources/circle_60.png";  // 使用120x120的PNG
+        bgImage.width = this.maxRadius * 2;  // 直径120
+        bgImage.height = this.maxRadius * 2;
+        bgImage.pivot(this.maxRadius, this.maxRadius);  // 中心点在60,60
+        bgImage.alpha = 0.3;
+        
+        // 启用抗锯齿
+        bgImage.smooth = true;
+        
+        // 设置事件支持
+        bgImage.mouseEnabled = true;
+        bgImage.mouseThrough = false;
         
         this.joystickBg.addChild(bgImage);
         
-        // 动态计算摇杆位置
-        const horizontalMargin = Laya.stage.width * 0.17;
-        const verticalMargin = Laya.stage.height * 0.25;
+        // 使用精确定位
+        const horizontalMargin = Math.round(Laya.stage.width * 0.17);
+        const verticalMargin = Math.round(Laya.stage.height * 0.25);
         this.joystickBg.pos(horizontalMargin, Laya.stage.height - verticalMargin);
         this.owner.addChild(this.joystickBg);
 
-        // 创建摇杆（更细腻的样式）
+        // 创建摇杆头
         this.joystickBar = new Laya.Sprite();
         this.joystickBar.name = "JoystickBar";
         
-        // 保留绘制但完全透明，用于保持点击区域
-        this.joystickBar.graphics.drawCircle(0, 0, this.stickRadius, "rgba(225, 225, 225, 0)");
-        
-        // 添加摇杆图片
         const barImage = new Laya.Image();
-        barImage.skin = "resources/joystick_bar.png";
-        const barScale = (this.stickRadius * 2) / 256;  // 假设原图是256x256
-        barImage.scale(barScale, barScale);
-        barImage.pivot(128, 128);  // 使用原图尺寸的一半作为轴心点
-        barImage.alpha = 0.7;
-        this.joystickBar.addChild(barImage);
+        barImage.skin = "resources/circle_25.png";  // 使用50x50的PNG
+        barImage.width = this.stickRadius * 2;  // 直径50
+        barImage.height = this.stickRadius * 2;
+        barImage.pivot(this.stickRadius, this.stickRadius);  // 中心点在25,25
+        barImage.alpha = 1;
+        barImage.mouseEnabled = false;
+        barImage.smooth = true;
         
+        this.joystickBar.addChild(barImage);
         this.joystickBar.pos(this.joystickBg.x, this.joystickBg.y);
         this.owner.addChild(this.joystickBar);
 
         this.originPos = new Laya.Point(this.joystickBg.x, this.joystickBg.y);
 
-        // 添加触摸事件
-        this.joystickBg.on(Laya.Event.MOUSE_DOWN, this, this.onJoystickDown);
+        // 添加鼠标和触摸事件
+        bgImage.on(Laya.Event.MOUSE_DOWN, this, this.onJoystickDown);
+        bgImage.on(Laya.Event.TOUCH_START, this, this.onJoystickDown);
         Laya.stage.on(Laya.Event.MOUSE_MOVE, this, this.onJoystickMove);
+        Laya.stage.on(Laya.Event.TOUCH_MOVE, this, this.onJoystickMove);
         Laya.stage.on(Laya.Event.MOUSE_UP, this, this.onJoystickUp);
+        Laya.stage.on(Laya.Event.TOUCH_END, this, this.onJoystickUp);
+        Laya.stage.on(Laya.Event.TOUCH_OUT, this, this.onJoystickUp);
 
         // 添加帧循环
         Laya.timer.frameLoop(1, this, this.onUpdate);
@@ -104,38 +106,43 @@ export class Joystick extends Laya.Script {
         let dy = stageY - this.originPos.y;
         let distance = Math.sqrt(dx * dx + dy * dy);
         
-        // 限制在最大移动距离内
         if (distance > this.maxDistance) {
             dx = dx * this.maxDistance / distance;
             dy = dy * this.maxDistance / distance;
             distance = this.maxDistance;
         }
 
-        this.joystickBar.pos(this.originPos.x + dx, this.originPos.y + dy);
+        // 使用Math.round确保像素对齐
+        this.joystickBar.pos(
+            Math.round(this.originPos.x + dx), 
+            Math.round(this.originPos.y + dy)
+        );
 
-        // 更新当前状态
         this.currentAngle = Math.atan2(dy, dx) * 180 / Math.PI;
         this.currentStrength = distance / this.maxDistance;
     }
 
     public onUpdate(): void {
-        // 如果摇杆处于活动状态，持续发送移动事件
         if (this.isMoving && this.currentStrength > 0) {
             this.owner.event("joystickMove", [this.currentAngle, this.currentStrength]);
         }
     }
 
     onDisable(): void {
+        // 移除所有事件监听
         this.joystickBg.off(Laya.Event.MOUSE_DOWN, this, this.onJoystickDown);
+        this.joystickBg.off(Laya.Event.TOUCH_START, this, this.onJoystickDown);
         Laya.stage.off(Laya.Event.MOUSE_MOVE, this, this.onJoystickMove);
+        Laya.stage.off(Laya.Event.TOUCH_MOVE, this, this.onJoystickMove);
         Laya.stage.off(Laya.Event.MOUSE_UP, this, this.onJoystickUp);
+        Laya.stage.off(Laya.Event.TOUCH_END, this, this.onJoystickUp);
+        Laya.stage.off(Laya.Event.TOUCH_OUT, this, this.onJoystickUp);
         Laya.timer.clear(this, this.onUpdate);
     }
 }
 
-// 添加类型声明
 declare module Laya {
     interface Script {
         onUpdate?(): void;
     }
-} 
+}

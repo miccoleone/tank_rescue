@@ -5,6 +5,8 @@ import { Box, BoxType } from "./Box";
 import { ExplosionManager } from "./ExplosionManager";
 import { EnemyTank } from "./EnemyTank";
 import { LeaderboardManager } from "./LeaderboardManager";
+import { Pilot } from "./Pilot";
+import { PilotPool } from "./PilotPool";
 
 // 段位系统配置
 interface RankLevel {
@@ -20,7 +22,9 @@ export class GameMain extends Laya.Script {
     private static readonly MIN_BOX_COUNT = 15; // 最小箱子数量
     private static readonly BOX_CHECK_INTERVAL = 2000; // 检查箱子数量的间隔（毫秒）
     private static readonly POINTS_PER_RANK = 3000; // 每个小段位所需分数
-    private static readonly ENEMY_TANK_SCORE = 500; // 修改击毁敌方坦克的得分
+    private static readonly ENEMY_TANK_SCORE = 100; // 击毁敌方坦克得分
+    private static readonly PILOT_RESCUE_SCORE = 1000; // 救援驾驶员的得分
+    private static readonly INVINCIBLE_DURATION = 5000; // 无敌时间5秒
     
     // 段位系统定义
     private static readonly RANKS: RankLevel[] = [
@@ -62,10 +66,20 @@ export class GameMain extends Laya.Script {
     private woodBoxCount: number = 0;
     private metalBoxCount: number = 0;
     private treasureBoxCount: number = 0;
+    private rescuedPilots: number = 0;  // 新增：已救援的驾驶员数量
+    private pilotBar: Laya.Sprite;      // 新增：驾驶员血条
+    private pilotCountText: Laya.Text;   // 新增：驾驶员数量文本
     private leaderboardBtn: Laya.Sprite;
     private leaderboardMask: Laya.Sprite | null = null;
     private leaderboardPanel: Laya.Sprite | null = null;
     private rankUpScores: number[] = [];
+    private invincibleEffect: Laya.Sprite | null = null;
+    private isInvincible: boolean = false;
+    private invincibleTimer: number = 0;
+    
+    // 开火按钮透明度常量
+    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.2;  // 正常状态透明度
+    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.7; // 按下状态透明度
     
     constructor() {
         super();
@@ -80,6 +94,7 @@ export class GameMain extends Laya.Script {
             "resources/explosion.png",
             "resources/level_up.mp3",
             "resources/score.mp3",
+            "resources/click.mp3",
             "resources/enemy-tank.png",
             "resources/moon.png",
             "resources/star.png",
@@ -87,7 +102,10 @@ export class GameMain extends Laya.Script {
             "resources/diamond.png",
             "resources/king.png",
             "resources/greatwall.png",
-            "resources/fire_bg.png"
+            "resources/闪电.png",
+            "resources/firebutton_bg.png",
+            "resources/circle_25.png",
+            "resources/circle_60.png"
         ], Laya.Handler.create(this, () => {
             // 确保爆炸管理器初始化
             ExplosionManager.instance;
@@ -105,6 +123,9 @@ export class GameMain extends Laya.Script {
         // 设置黑色背景
         Laya.stage.bgColor = "#000000";
         
+        // 初始化驾驶员对象池
+        PilotPool.instance;
+        
         // 播放背景音乐
         this.bgMusic = Laya.SoundManager.playMusic("resources/background.mp3", 0);
         this.bgMusic.volume = 0.5;
@@ -115,6 +136,8 @@ export class GameMain extends Laya.Script {
         this.initPlayerTank();
         // 初始化虚拟摇杆
         this.initJoystick();
+        // 初始化开火按钮
+        this.initFireButton();
         // 初始化积分和段位显示
         this.initScoreDisplay();
         // 初始化排行榜按钮
@@ -169,14 +192,8 @@ export class GameMain extends Laya.Script {
         this.tank = new Laya.Sprite();
         this.tank.name = "PlayerTank";
         
-        // // 创建描边效果
-        // const outline = new Laya.Sprite();
-        // outline.graphics.drawRect(-16, -16, 32, 32, null, "#00ff00", 1);
-        // this.tank.addChild(outline);
-        
         // 使用tank.png作为坦克图片
         let tankImage = new Laya.Image();
-        // tankImage.skin = "resources/tank.png";
         tankImage.skin = "resources/Retina/tank_sand.png";
         tankImage.width = 30;
         tankImage.height = 30;
@@ -186,11 +203,12 @@ export class GameMain extends Laya.Script {
         
         // 将坦克放置在屏幕中央
         this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
-        
         this.gameBox.addChild(this.tank);
 
-        // 初始化开火按钮
-        this.initFireButton();
+        // 创建无敌效果
+        this.createInvincibleEffect();
+        // 激活无敌状态
+        this.activateInvincible();
     }
 
     private initJoystick(): void {
@@ -210,69 +228,75 @@ export class GameMain extends Laya.Script {
         // 监听摇杆容器的事件
         joystickContainer.on("joystickMove", this, this.onJoystickMove);
     }
-
     private initFireButton(): void {
         this.fireBtn = new Laya.Sprite();
         this.fireBtn.name = "FireButton";
-        
-        // 设置鼠标事件支持
-        this.fireBtn.mouseEnabled = true;
-        this.fireBtn.mouseThrough = false;
         
         // 创建按钮背景
         let btnBg = new Laya.Sprite();
         btnBg.name = "FireButtonBg";
         btnBg.mouseEnabled = true;
-        btnBg.mouseThrough = true;
+        btnBg.mouseThrough = false;
         
-        // 保留绘制但完全透明，用于保持点击区域
-        const radius = 60;
-        btnBg.graphics.drawCircle(0, 0, radius, "rgba(255, 100, 100, 0)");
-        
-        // 添加背景图片
+        // 使用原始大小的PNG图片作为背景
+        const btnRadius = 60; // 按钮半径
         const bgImage = new Laya.Image();
-        bgImage.skin = "resources/fire_bg.png";
-        const bgScale = (radius * 2) / 256;  // 假设原图是256x256
-        bgImage.scale(bgScale, bgScale);
-        bgImage.pivot(128, 128);  // 使用原图尺寸的一半作为轴心点
-        bgImage.alpha = 0.3;
+        bgImage.skin = "resources/firebutton_bg.png";
+        bgImage.width = btnRadius * 2;  // 直径 = 半径 * 2
+        bgImage.height = btnRadius * 2;
+        bgImage.pivot(btnRadius, btnRadius);  // 轴心点设置为中心
+        bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
         
-        // 添加红色滤镜
-        const redMatrix = [
-            1, 0, 0, 0, 255 * 0.5,  // R
-            0, 0, 0, 0, 100 * 0.5,  // G
-            0, 0, 0, 0, 100 * 0.5,  // B
-            0, 0, 0, 1, 0           // A
-        ];
-        const redFilter = new Laya.ColorFilter(redMatrix);
-        bgImage.filters = [redFilter];
+        // 设置鼠标事件支持
+        bgImage.mouseEnabled = true;
+        bgImage.mouseThrough = false;
         
         btnBg.addChild(bgImage);
-        
         this.fireBtn.addChild(btnBg);
         
-        // 加载闪电图标
+        // // 加载闪电图标
         let lightning = new Laya.Image();
         lightning.name = "LightningIcon";
-        lightning.skin = "resources/lightning.png";
-        const iconSize = radius * 1.5;
-        lightning.width = iconSize;
-        lightning.height = iconSize;
-        lightning.pivot(iconSize/2, iconSize/2);
-        lightning.alpha = 0.5;
+        lightning.skin = "resources/闪电.png";
+        const iconRadius = 36;  // 闪电图标半径
+        lightning.width = iconRadius * 2;  // 直径 = 半径 * 2
+        lightning.height = iconRadius * 2;
+        lightning.pivot(iconRadius, iconRadius - 8);  // 轴心点设置为中心
+        lightning.alpha = 0.8;
+        
+        // 为闪电图标添加点击效果
+        this.fireBtn.addChild(lightning);
+
+
+        // 添加到开火按钮
         this.fireBtn.addChild(lightning);
         
-        // 动态计算按钮位置
-        const horizontalMargin = Laya.stage.width * 0.17;
-        const verticalMargin = Laya.stage.height * 0.25;
-    
-        this.fireBtn.pos(Laya.stage.width - horizontalMargin, Laya.stage.height - verticalMargin);
-        this.owner.addChild(this.fireBtn);
+        // 使用精确定位
+        const horizontalMargin = Math.round(Laya.stage.width * 0.17);
+        const verticalMargin = Math.round(Laya.stage.height * 0.25);
+        this.fireBtn.pos(
+            Math.round(Laya.stage.width - horizontalMargin),
+            Math.round(Laya.stage.height - verticalMargin)
+        );
         
-        // 添加按钮事件
-        this.fireBtn.on(Laya.Event.MOUSE_DOWN, this, this.onFireStart);
-        this.fireBtn.on(Laya.Event.MOUSE_UP, this, this.onFireEnd);
-        this.fireBtn.on(Laya.Event.MOUSE_OUT, this, this.onFireEnd);
+        // 添加按钮按下效果
+        bgImage.on(Laya.Event.MOUSE_DOWN, this, () => {
+            Laya.Tween.to(lightning, { scale: 0.9 }, 100); // 按下时轻微缩小
+            this.onFireStart();
+        });
+        
+        // 添加按钮抬起效果
+        bgImage.on(Laya.Event.MOUSE_UP, this, () => {
+            Laya.Tween.to(lightning, { scale: 1.0 }, 100); // 恢复原始大小
+            this.onFireEnd();
+        });
+        
+        bgImage.on(Laya.Event.MOUSE_OUT, this, () => {
+            Laya.Tween.to(lightning, { scale: 1.0 }, 100);
+            this.onFireEnd();
+        });
+        
+        this.owner.addChild(this.fireBtn);
     }
 
     private onJoystickMove(angle: number, strength: number): void {
@@ -336,19 +360,11 @@ export class GameMain extends Laya.Script {
             return;
         }
         
-        // 按钮按下效果 - 调整透明度和滤镜
+        // 按钮按下效果 - 调整透明度
         let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
         const bgImage = btnBg.getChildAt(0) as Laya.Image;
         if (bgImage) {
-            bgImage.alpha = 0.7;
-            // 创建新的更强的红色滤镜
-            const pressedRedMatrix = [
-                1, 0, 0, 0, 255 * 0.8,  // R: 增加红色
-                0, 0, 0, 0, 50 * 0.5,   // G: 降低绿色
-                0, 0, 0, 0, 50 * 0.5,   // B: 降低蓝色
-                0, 0, 0, 1, 0           // A
-            ];
-            bgImage.filters = [new Laya.ColorFilter(pressedRedMatrix)];
+            bgImage.alpha = GameMain.FIRE_BTN_PRESSED_ALPHA;
         }
         
         // 播放开火音效并发射子弹
@@ -360,15 +376,7 @@ export class GameMain extends Laya.Script {
         let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
         const bgImage = btnBg.getChildAt(0) as Laya.Image;
         if (bgImage) {
-            bgImage.alpha = 0.3;
-            // 恢复原始红色滤镜
-            const originalRedMatrix = [
-                1, 0, 0, 0, 255 * 0.5,  // R
-                0, 0, 0, 0, 100 * 0.5,  // G
-                0, 0, 0, 0, 100 * 0.5,  // B
-                0, 0, 0, 1, 0           // A
-            ];
-            bgImage.filters = [new Laya.ColorFilter(originalRedMatrix)];
+            bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
         }
     }
 
@@ -418,7 +426,7 @@ export class GameMain extends Laya.Script {
                     // 击中敌方坦克
                     this.score += GameMain.ENEMY_TANK_SCORE;
                     this.updateScoreDisplay();
-                    ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox);
+                    ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox, true);
                     // 添加得分弹出效果
                     this.createScorePopup(enemy.x, enemy.y, GameMain.ENEMY_TANK_SCORE);
                     enemy.destroy();
@@ -437,10 +445,6 @@ export class GameMain extends Laya.Script {
                         ExplosionManager.instance.playExplosion(box.x, box.y, this.gameBox);
                         // 添加得分弹出效果
                         this.createScorePopup(box.x, box.y, earnedScore);
-                        if (box.type === BoxType.Treasure) {
-                            // 移除烟花效果，只保留音效
-                            Laya.SoundManager.playSound("resources/score.mp3", 1);
-                        }
                     }
                     this.recycleBullet(bullet);
                     return;
@@ -509,7 +513,7 @@ export class GameMain extends Laya.Script {
         
         // 检查边界是否相交
         if (bulletBounds.intersects(enemyBounds)) {
-            this.killCount++; // 添加击杀统计
+            // 注意：不要在这里增加击杀统计，避免重复计数
             return true;
         }
         return false;
@@ -534,6 +538,25 @@ export class GameMain extends Laya.Script {
         this.scoreText.pos(adjustedMargin, 20);
         this.scoreText.text = `Score: ${this.score}`;
         uiContainer.addChild(this.scoreText);
+
+        // 创建驾驶员血条容器
+        const pilotContainer = new Laya.Sprite();
+        pilotContainer.pos(adjustedMargin + this.scoreText.width + 50, 20); // 放在分数右边，增加间距到50
+        uiContainer.addChild(pilotContainer);
+
+        // 创建血条
+        this.pilotBar = new Laya.Sprite();
+        pilotContainer.addChild(this.pilotBar);
+
+        // 创建驾驶员数量文本
+        this.pilotCountText = new Laya.Text();
+        this.pilotCountText.fontSize = 24;
+        this.pilotCountText.color = "#333333";
+        this.pilotCountText.stroke = 2;
+        this.pilotCountText.strokeColor = "#e0e0e0";
+        this.pilotCountText.pos(5, 0);
+        this.pilotCountText.visible = false; // 初始不显示
+        pilotContainer.addChild(this.pilotCountText);
 
         // 段位显示
         this.rankText = new Laya.Text();
@@ -766,7 +789,9 @@ export class GameMain extends Laya.Script {
                 alpha: 0,
                 scaleX: finalSize,
                 scaleY: finalSize
-            }, duration * speed, Laya.Ease.quadOut);
+            }, duration * speed, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
+                particle.destroy();
+            }));
         }
 
         // 图标动画
@@ -934,40 +959,141 @@ export class GameMain extends Laya.Script {
             const distance = Math.sqrt(dx * dx + dy * dy);
             
             if (distance < GameMain.COLLISION_DISTANCE) {
-                // 发生碰撞，游戏结束
-                this.handleGameOver();
+                // 如果处于无敌状态，不触发游戏结束
+                if (!this.isInvincible) {
+                    this.handleGameOver();
+                    return;
+                }
+            }
+        }
+
+        // 检查子弹碰撞
+        for (let i = this.bullets.length - 1; i >= 0; i--) {
+            const bullet = this.bullets[i];
+            
+            // 检查与敌方坦克的碰撞
+            for (let j = this.enemyTanks.length - 1; j >= 0; j--) {
+                const enemy = this.enemyTanks[j];
+                if (this.checkEnemyCollision(bullet, enemy)) {
+                    // 播放爆炸效果
+                    ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox, true);
+                    
+                    // 回收子弹和敌人
+                    this.recycleBullet(bullet);
+                    enemy.destroy();
+                    this.enemyTanks.splice(j, 1);
+                    
+                    // 增加分数和击杀计数
+                    this.score += 1000;
+                    this.killCount++;
+                    this.updateScoreDisplay();
+                    break;
+                }
+            }
+            
+            // 检查与箱子的碰撞
+            for (let box of this.boxes) {
+                if (!box.destroyed && this.checkBulletCollision(bullet, box)) {
+                    const earnedScore = box.hit();
+                    if (earnedScore > 0) {
+                        this.score += earnedScore;
+                        this.updateScoreDisplay();
+                        ExplosionManager.instance.playExplosion(box.x, box.y, this.gameBox);
+                        // 添加得分弹出效果
+                        this.createScorePopup(box.x, box.y, earnedScore);
+                    }
+                    this.recycleBullet(bullet);
+                    return;
+                }
+            }
+            
+            // 检查子弹是否超出屏幕
+            if (bullet.x < 0 || bullet.x > Laya.stage.width || 
+                bullet.y < 0 || bullet.y > Laya.stage.height) {
+                this.recycleBullet(bullet);
                 return;
             }
         }
+
+        // 检查玩家坦克与驾驶员的碰撞
+        if (this.tank && !this.tank.destroyed) {
+            // 获取所有驾驶员
+            const pilots: Pilot[] = [];
+            for (let i = 0; i < this.gameBox.numChildren; i++) {
+                const node = this.gameBox.getChildAt(i);
+                if (node instanceof Pilot) {
+                    pilots.push(node);
+                }
+            }
+
+            for (const pilot of pilots) {
+                // 使用更宽松的碰撞检测（60像素范围 - 光圈大小）
+                const dx = this.tank.x - pilot.x;
+                const dy = this.tank.y - pilot.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 60) {  // 60像素的救援范围，覆盖光圈区域
+                    // 播放得分音效
+                    Laya.SoundManager.playSound("resources/score.mp3", 1);
+                    
+                    // 增加分数
+                    this.score += GameMain.PILOT_RESCUE_SCORE;
+                    this.updateScoreDisplay();
+                    
+                    // 增加救援计数并更新显示
+                    this.rescuedPilots++;
+                    this.updatePilotDisplay();
+                    
+                    // 触发救援效果（对象池会自动处理回收）
+                    pilot.rescue();
+                }
+            }
+        }
+    }
+
+    private checkEnemyCollision(bullet: Laya.Sprite, enemy: Laya.Sprite): boolean {
+        const dx = bullet.x - enemy.x;
+        const dy = bullet.y - enemy.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance < 20; // 使用20像素的碰撞范围
     }
 
     private handleGameOver(): void {
         // 禁用开火按钮
         if (this.fireBtn) {
             this.fireBtn.mouseEnabled = false;
+            const btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
+            if (btnBg) {
+                const bgImage = btnBg.getChildAt(0) as Laya.Image;
+                if (bgImage) {
+                    bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+                }
+            }
         }
+        
+        // 添加灰色滤镜效果
+        const grayFilter = new Laya.ColorFilter([
+            0.3, 0.59, 0.11, 0, 0,  // R
+            0.3, 0.59, 0.11, 0, 0,  // G
+            0.3, 0.59, 0.11, 0, 0,  // B
+            0, 0, 0, 1, 0           // A
+        ]);
+        this.gameBox.filters = [grayFilter];
         
         // 播放爆炸效果
         ExplosionManager.instance.playExplosion(this.tank.x, this.tank.y, this.gameBox);
         
-        // 销毁所有对象
+        // 销毁玩家坦克
         this.tank.destroy();
-        this.enemyTanks.forEach(enemy => {
-            ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox);
-            enemy.destroy();
-        });
-        this.enemyTanks = [];
+
+        // 创建结算面板
+        this.showGameStats();
         
-        // 清理所有子弹
-        this.bullets.forEach(bullet => this.recycleBullet(bullet));
-        this.bullets = [];
-        
-        // 创建渐变遮罩层
-        const mask = new Laya.Sprite();
-        mask.graphics.drawRect(0, 0, Laya.stage.width, Laya.stage.height, "rgba(0, 0, 0, 0)");
-        mask.zOrder = 1000;
-        this.owner.addChild(mask);
-        
+        // 显示倒计时
+        this.showCountdown();
+    }
+
+    private showGameStats(): void {
         // 创建结算面板容器
         const container = new Laya.Sprite();
         container.zOrder = 1001;
@@ -977,8 +1103,8 @@ export class GameMain extends Laya.Script {
         // 修改面板尺寸和样式
         const panel = new Laya.Sprite();
         this.drawPanel(panel);
-        panel.pivot(200, 200); // 保持轴心点在中心
-        panel.pos(Laya.stage.width/2, Laya.stage.height/2); // 保持在屏幕中心
+        panel.pivot(200, 200);
+        panel.pos(Laya.stage.width/2, Laya.stage.height/2);
         container.addChild(panel);
         
         // 获取当前段位信息
@@ -986,14 +1112,20 @@ export class GameMain extends Laya.Script {
         
         // 创建标题
         const title = new Laya.Text();
+        if (this.rescuedPilots > 0) {
+            title.text = `英雄 你成功救下 ${this.rescuedPilots}名驾驶员！`;
+        } else {
+            title.text = "你尽力了";
+        }
         title.fontSize = 24;
-        title.color = "#666666";
+        title.color = "#333333";
         title.width = 400;
         title.height = 40;
         title.align = "center";
         title.x = 0;
         title.y = 30;
-        title.text = `恭喜 你获得「${rankInfo.rankName}」勋章！`;
+        title.overflow = Laya.Text.HIDDEN;
+        title.wordWrap = false;
         panel.addChild(title);
         
         // 创建段位图标容器
@@ -1021,7 +1153,7 @@ export class GameMain extends Laya.Script {
         statsContainer.pos(30, 150);
         panel.addChild(statsContainer);
         
-        // 统计数据项（使用图片图标）
+        // 统计数据项
         const stats = [
             { icon: "resources/enemy-tank.png", label: "击毁敌人", value: this.killCount },
             { icon: "resources/woodBox.png", label: "摧毁木箱", value: this.woodBoxCount },
@@ -1046,31 +1178,28 @@ export class GameMain extends Laya.Script {
         
         // 调整总分显示位置
         const scoreContainer = new Laya.Sprite();
-        scoreContainer.pos(70, 320); // 调整总分位置
+        scoreContainer.pos(70, 320);
         panel.addChild(scoreContainer);
         
         const scoreLabel = new Laya.Text();
-        scoreLabel.fontSize = 28; // 调整字体大小
+        scoreLabel.fontSize = 28;
         scoreLabel.color = "#FFD700";
         scoreLabel.text = "总分";
         scoreContainer.addChild(scoreLabel);
         
         const scoreValue = new Laya.Text();
-        scoreValue.fontSize = 32; // 调整字体大小
+        scoreValue.fontSize = 32;
         scoreValue.color = "#666666";
-        scoreValue.x = 200; // 调整位置
+        scoreValue.x = 200;
         scoreValue.text = "0";
         scoreContainer.addChild(scoreValue);
         
-        // 入场动画序列
-        Laya.Tween.to(mask, { alpha: 1 }, 300, null, null, 0);
-        
-        // 修改面板入场动画
-        container.y = 0; // 初始位置设为0
+        // 入场动画
+        container.y = 0;
         container.alpha = 0;
         Laya.Tween.to(container, {
             alpha: 1
-        }, 600, Laya.Ease.backOut, null, 200);
+        }, 600, Laya.Ease.backOut);
         
         // 分数动画
         let currentScore = 0;
@@ -1084,19 +1213,105 @@ export class GameMain extends Laya.Script {
         
         Laya.timer.loop(30, this, updateScore);
         
-        // 5秒后退场动画
+        // 2秒后退场动画
         Laya.timer.once(2000, this, () => {
             Laya.Tween.to(container, {
                 alpha: 0,
-                y: -Laya.stage.height
-            }, 500, Laya.Ease.backIn);
-            
-            Laya.Tween.to(mask, { alpha: 0 }, 500, null, Laya.Handler.create(this, () => {
-                mask.destroy();
+                y: -50
+            }, 500, Laya.Ease.backIn, Laya.Handler.create(this, () => {
                 container.destroy();
-                this.restartGame();
             }));
         });
+    }
+
+    private showCountdown(): void {
+        // 创建倒计时容器
+        const countdownContainer = new Laya.Sprite();
+        countdownContainer.zOrder = 1002;
+        countdownContainer.pivot(60, 60);
+        countdownContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2);
+        this.owner.addChild(countdownContainer);
+        
+        // 创建倒计时背景 - 使用半透明圆形
+        const bg = new Laya.Sprite();
+        bg.graphics.drawCircle(60, 60, 70, "rgba(0, 0, 0, 0.3)");
+        countdownContainer.addChild(bg);
+        
+        // 创建倒计时数字文本
+        const numberText = new Laya.Text();
+        numberText.text = "7";
+        numberText.fontSize = 80;
+        numberText.font = "Arial";
+        numberText.bold = true;
+        numberText.color = "red";
+        numberText.stroke = 4;
+        numberText.strokeColor = "#ffffff";
+        numberText.width = 120;
+        numberText.height = 120;
+        numberText.align = "center";
+        numberText.valign = "middle";
+        numberText.pos(0, 0);
+        countdownContainer.addChild(numberText);
+        
+        // 开始倒计时
+        let countdown = 7;
+        const updateCountdown = () => {
+            countdown--;
+            
+            // 更新数字文本
+            numberText.text = countdown.toString();
+            
+            // 播放缩放动画
+            countdownContainer.scale(1.5, 1.5);
+            Laya.Tween.to(countdownContainer, { scaleX: 1, scaleY: 1 }, 500, Laya.Ease.backOut);
+            
+            // 在倒计时最后1秒重置游戏数据
+            if (countdown === 1) {
+                // 重置分数和相关信息
+                this.score = 0;
+                this.killCount = 0;
+                this.woodBoxCount = 0;
+                this.metalBoxCount = 0;
+                this.treasureBoxCount = 0;
+                this.rescuedPilots = 0;
+                this.initRankUpScores();
+                this.updateScoreDisplay();
+                this.updatePilotDisplay();
+                
+                // 只在当前箱子数量少于15个时才生成新箱子
+                const activeBoxCount = this.boxes.filter(box => !box.destroyed).length;
+                if (activeBoxCount < GameMain.MIN_BOX_COUNT) {
+                    const boxesToAdd = GameMain.MIN_BOX_COUNT - activeBoxCount;
+                    for (let i = 0; i < boxesToAdd; i++) {
+                        this.createRandomBox();
+                    }
+                }
+            }
+            
+            if (countdown <= 0) {
+                Laya.timer.clear(this, updateCountdown);
+                
+                // 移除灰色滤镜
+                this.gameBox.filters = null;
+                
+                // 移除倒计时容器
+                countdownContainer.destroy();
+                
+                // 重新创建玩家坦克
+                this.initPlayerTank();
+                
+                // 重新启用开火按钮
+                if (this.fireBtn) {
+                    this.fireBtn.mouseEnabled = true;
+                }
+
+                // 创建无敌效果并激活无敌状态
+                this.createInvincibleEffect();
+                this.activateInvincible();
+            }
+        };
+        
+        Laya.timer.loop(1000, this, updateCountdown);
     }
 
     // 修改面板绘制方法
@@ -1158,11 +1373,13 @@ export class GameMain extends Laya.Script {
         this.woodBoxCount = 0;
         this.metalBoxCount = 0;
         this.treasureBoxCount = 0;
+        this.rescuedPilots = 0;  // 重置救援计数
         
         // 重置分数和升级点
         this.score = 0;
         this.initRankUpScores(); // 重新初始化升级分数点
         this.updateScoreDisplay();
+        this.updatePilotDisplay(); // 更新驾驶员显示
         
         // 重新创建玩家坦克
         this.initPlayerTank();
@@ -1172,10 +1389,21 @@ export class GameMain extends Laya.Script {
         this.boxes = [];
         this.initBoxes();
         
-        // 重新启用开火按钮
+        // 重新启用开火按钮并重置状态
         if (this.fireBtn) {
             this.fireBtn.mouseEnabled = true;
+            const btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
+            if (btnBg) {
+                const bgImage = btnBg.getChildAt(0) as Laya.Image;
+                if (bgImage) {
+                    bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+                }
+            }
         }
+
+        // 创建无敌效果并激活无敌状态
+        this.createInvincibleEffect();
+        this.activateInvincible();
     }
 
     private createLocalFireworks(x: number, y: number): void {
@@ -1257,6 +1485,9 @@ export class GameMain extends Laya.Script {
         
         // 添加触摸事件
         btnContainer.on(Laya.Event.CLICK, this, () => {
+            // 点击音效
+            this.levelUpSound = Laya.SoundManager.playSound("resources/click.mp3", 1);
+            this.levelUpSound.volume = 1;
             if (this.leaderboardPanel) {
                 this.hideLeaderboard();
             } else {
@@ -1464,5 +1695,116 @@ export class GameMain extends Laya.Script {
                 scoreText.destroy();
             }));
         }));
+    }
+
+    private updatePilotDisplay(): void {
+        const GRID_WIDTH = 7;  // 每格宽度
+        const BAR_HEIGHT = 20; // 血条高度
+        
+        // 确保血条存在
+        if (!this.pilotBar) return;
+        
+        // 清除之前的绘制
+        this.pilotBar.graphics.clear();
+        
+        // 如果没有救援的驾驶员，隐藏显示
+        if (this.rescuedPilots === 0) {
+            this.pilotCountText.visible = false;
+            return;
+        }
+
+        // 显示数量文本
+        this.pilotCountText.visible = true;
+        
+        // 计算总宽度
+        const barWidth = this.rescuedPilots * GRID_WIDTH;
+        
+        // 先绘制整个血条背景
+        this.pilotBar.graphics.drawRect(0, 0, barWidth, BAR_HEIGHT, "#388E3C");
+        
+        // 绘制格子分隔线
+        for (let i = 1; i < this.rescuedPilots; i++) {
+            const x = i * GRID_WIDTH;
+            this.pilotBar.graphics.drawLine(x, 0, x, BAR_HEIGHT, "#FFFFFF", 1);
+        }
+        
+        // 更新数量文本位置和内容
+        this.pilotCountText.x = barWidth + 5;  // 血条后留5像素间距
+        this.pilotCountText.text = `X${this.rescuedPilots}`;
+    }
+
+    private createInvincibleEffect(): void {
+        // 移除旧的无敌效果（如果存在）
+        if (this.invincibleEffect) {
+            this.invincibleEffect.destroy();
+        }
+    
+        // 创建无敌效果容器
+        this.invincibleEffect = new Laya.Sprite();
+        this.gameBox.addChild(this.invincibleEffect);
+    
+        // 创建渐变圆圈
+        const radius = Laya.stage.height / 4; // 屏幕高度的1/4
+        const gradient = new Laya.Sprite();
+        
+        // 使用半透明绿色绘制圆圈
+        gradient.graphics.drawCircle(0, 0, radius, null, "green");
+        
+        // 添加发光效果
+        const glowRadius = radius + 5;
+        gradient.graphics.drawCircle(0, 0, glowRadius, null, "#00ff0011");
+    
+        // 添加阴影效果
+        const shadowFilter = new Laya.GlowFilter("#00ff00", 10, 7, 7, 2); // 绿色阴影，模糊度为10，偏移量为7
+        gradient.filters = [shadowFilter];
+    
+        this.invincibleEffect.addChild(gradient);
+        this.invincibleEffect.pos(this.tank.x, this.tank.y);
+        this.invincibleEffect.alpha = 0.6;
+    
+        // 添加缩放动画
+        const scaleAnimation = () => {
+            Laya.Tween.to(this.invincibleEffect, {
+                scaleX: 1.1,
+                scaleY: 1.1,
+                alpha: 0.4
+            }, 1000, Laya.Ease.sineInOut, Laya.Handler.create(this, () => {
+                Laya.Tween.to(this.invincibleEffect, {
+                    scaleX: 1,
+                    scaleY: 1,
+                    alpha: 0.6
+                }, 1000, Laya.Ease.sineInOut, Laya.Handler.create(this, scaleAnimation));
+            }));
+        };
+        
+        scaleAnimation();
+    }
+
+    private activateInvincible(): void {
+        this.isInvincible = true;
+        this.invincibleTimer = Date.now();
+        
+        // 启动无敌状态检查
+        Laya.timer.frameLoop(1, this, this.checkInvincibleStatus);
+    }
+
+    private checkInvincibleStatus(): void {
+        if (!this.isInvincible) return;
+        
+        const currentTime = Date.now();
+        if (currentTime - this.invincibleTimer >= GameMain.INVINCIBLE_DURATION) {
+            // 无敌时间结束
+            this.isInvincible = false;
+            if (this.invincibleEffect) {
+                this.invincibleEffect.destroy();
+                this.invincibleEffect = null;
+            }
+            Laya.timer.clear(this, this.checkInvincibleStatus);
+        } else {
+            // 更新无敌效果位置
+            if (this.invincibleEffect && this.tank) {
+                this.invincibleEffect.pos(this.tank.x, this.tank.y);
+            }
+        }
     }
 } 

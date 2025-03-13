@@ -1,0 +1,10 @@
+<svg width="110" height="110" viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">
+    <circle 
+        cx="55" 
+        cy="55" 
+        r="55" 
+        fill="#ff0000" 
+        fill-opacity="0.7"
+        shape-rendering="geometricPrecision"
+    />
+</svg>
