@@ -103,7 +103,7 @@ export class GameMain extends Laya.Script {
             "resources/king.png",
             "resources/greatwall.png",
             "resources/闪电.png",
-            "resources/firebutton_bg.png",
+            "resources/circle_60_red.png",
             "resources/circle_25.png",
             "resources/circle_60.png"
         ], Laya.Handler.create(this, () => {
@@ -235,13 +235,13 @@ export class GameMain extends Laya.Script {
         // 创建按钮背景
         let btnBg = new Laya.Sprite();
         btnBg.name = "FireButtonBg";
-        btnBg.mouseEnabled = true;
-        btnBg.mouseThrough = false;
+        // btnBg.mouseEnabled = true;
+        // btnBg.mouseThrough = false;
         
         // 使用原始大小的PNG图片作为背景
         const btnRadius = 60; // 按钮半径
         const bgImage = new Laya.Image();
-        bgImage.skin = "resources/firebutton_bg.png";
+        bgImage.skin = "resources/circle_60_red.png";
         bgImage.width = btnRadius * 2;  // 直径 = 半径 * 2
         bgImage.height = btnRadius * 2;
         bgImage.pivot(btnRadius, btnRadius);  // 轴心点设置为中心

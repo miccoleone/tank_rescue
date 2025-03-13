@@ -28,11 +28,11 @@ export class Joystick extends Laya.Script {
         
         // 添加背景图片
         const bgImage = new Laya.Image();
-        bgImage.skin = "resources/circle_60.png";  // 使用120x120的PNG
+        bgImage.skin = "resources/circle_60_black.png";  // 使用120x120的PNG
         bgImage.width = this.maxRadius * 2;  // 直径120
         bgImage.height = this.maxRadius * 2;
         bgImage.pivot(this.maxRadius, this.maxRadius);  // 中心点在60,60
-        bgImage.alpha = 0.3;
+        bgImage.alpha = 0.7;
         
         // 启用抗锯齿
         bgImage.smooth = true;
@@ -54,11 +54,11 @@ export class Joystick extends Laya.Script {
         this.joystickBar.name = "JoystickBar";
         
         const barImage = new Laya.Image();
-        barImage.skin = "resources/circle_25.png";  // 使用50x50的PNG
+        barImage.skin = "resources/circle_25_white.png";  // 使用50x50的PNG
         barImage.width = this.stickRadius * 2;  // 直径50
         barImage.height = this.stickRadius * 2;
         barImage.pivot(this.stickRadius, this.stickRadius);  // 中心点在25,25
-        barImage.alpha = 1;
+        barImage.alpha = 0.75;
         barImage.mouseEnabled = false;
         barImage.smooth = true;
         
