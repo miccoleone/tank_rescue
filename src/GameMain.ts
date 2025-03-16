@@ -78,8 +78,8 @@ export class GameMain extends Laya.Script {
     private invincibleTimer: number = 0;
     
     // 开火按钮透明度常量
-    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.2;  // 正常状态透明度
-    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.7; // 按下状态透明度
+    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
+    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
     
     constructor() {
         super();
@@ -104,7 +104,6 @@ export class GameMain extends Laya.Script {
             "resources/greatwall.png",
             "resources/闪电.png",
             "resources/circle_60_red.png",
-            "resources/circle_25.png",
             "resources/circle_60.png"
         ], Laya.Handler.create(this, () => {
             // 确保爆炸管理器初始化
@@ -235,8 +234,8 @@ export class GameMain extends Laya.Script {
         // 创建按钮背景
         let btnBg = new Laya.Sprite();
         btnBg.name = "FireButtonBg";
-        // btnBg.mouseEnabled = true;
-        // btnBg.mouseThrough = false;
+        btnBg.mouseEnabled = true;
+        btnBg.mouseThrough = false;
         
         // 使用原始大小的PNG图片作为背景
         const btnRadius = 60; // 按钮半径
@@ -246,6 +245,7 @@ export class GameMain extends Laya.Script {
         bgImage.height = btnRadius * 2;
         bgImage.pivot(btnRadius, btnRadius);  // 轴心点设置为中心
         bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+        bgImage.name = "FireButtonBgImage";
         
         // 设置鼠标事件支持
         bgImage.mouseEnabled = true;
