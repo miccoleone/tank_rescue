@@ -21,10 +21,10 @@ export class LeaderboardManager {
         SILVER: 9000,  // 白银 (9000-20999)
         BRONZE: 0      // 青铜 (0-8999)
     };
-    private static readonly STORAGE_KEY = "tankGame_bestScore112";
-    private static readonly RANK_STORAGE_KEY = "tankGame_rankInfo112"; // 新增：保存段位信息的key
-    private static readonly MONTHLY_STORAGE_KEY = "tankGame_monthlyScore112"; // 新增：保存30天内最高分的key
-    private static readonly MONTHLY_RANK_STORAGE_KEY = "tankGame_monthlyRankInfo112"; // 新增：保存30天内段位信息的key
+    private static readonly STORAGE_KEY = "tankGame_bestScore1";
+    private static readonly RANK_STORAGE_KEY = "tankGame_rankInfo1"; // 新增：保存段位信息的key
+    private static readonly MONTHLY_STORAGE_KEY = "tankGame_monthlyScore"; // 新增：保存30天内最高分的key
+    private static readonly MONTHLY_RANK_STORAGE_KEY = "tankGame_monthlyRankInfo"; // 新增：保存30天内段位信息的key
     private static readonly SCORE_EXPIRY_DAYS = 1; // 24小时战绩
     private static readonly MONTHLY_EXPIRY_DAYS = 30; // 30天战绩
     private currentScore: number = 0;
@@ -172,72 +172,189 @@ export class LeaderboardManager {
         }
     }
 
-    private calculateRank(score: number): number {
-        // 简化起见，直接根据分数确定排名
-        // 使用随机因子使结果显得更自然
+    private getPlayerDistribution(score: number): number {
+        const rankInfo = this.getRankInfo(score);
+        
+        // 使用固定的随机种子确保相同分数得到相同结果
         const seed = score % 10000;
         const getRandom = () => {
             const x = Math.sin(seed) * 10000;
             return x - Math.floor(x);
         };
+
+        // 根据段位设置基础玩家数量，调整比例以确保更合理的超越百分比
+        let baseCount;
+        switch(rankInfo.rankName) {
+            case "青铜": 
+                baseCount = 150000 + (getRandom() * 5000 - 2500); // 15万左右，占总玩家约45%
+                break;
+            case "白银": 
+                baseCount = 100000 + (getRandom() * 4000 - 2000); // 10万左右，占总玩家约30%
+                break;
+            case "黄金": 
+                baseCount = 50000 + (getRandom() * 3000 - 1500); // 5万左右，占总玩家约15%
+                break;
+            case "钻石": 
+                baseCount = 20000 + (getRandom() * 2000 - 1000); // 2万左右，占总玩家约6%
+                break;
+            case "王者": 
+                baseCount = 10000 + (getRandom() * 1000 - 500); // 1万左右，占总玩家约3%
+                break;
+            case "长城": 
+                baseCount = 5000 + (getRandom() * 500 - 250);  // 5千左右，占总玩家约1%
+                break;
+            default:
+                baseCount = 150000; // 默认使用青铜段位的基数
+        }
+
+        return Math.floor(baseCount);
+    }
+
+    private getTotalPlayersBelow(score: number): number {
+        const ranks = [
+            { name: "王者", startScore: LeaderboardManager.RANK_THRESHOLDS.KING },
+            { name: "钻石", startScore: LeaderboardManager.RANK_THRESHOLDS.DIAMOND },
+            { name: "黄金", startScore: LeaderboardManager.RANK_THRESHOLDS.GOLD },
+            { name: "白银", startScore: LeaderboardManager.RANK_THRESHOLDS.SILVER },
+            { name: "青铜", startScore: LeaderboardManager.RANK_THRESHOLDS.BRONZE }
+        ];
         
-        // 根据段位名称计算大致排名
-        const rankInfoResult = this.getRankInfo(score);
-        let basePlayers = 0;
+        // 使用分数作为随机种子以确保相同分数得到相同结果
+        const seed = score % 10000;
+        const getRandom = () => {
+            const x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
+        };
+
+        // 获取当前段位信息
+        const currentRankInfo = this.getRankInfo(score);
         
-        // 获取实际的RankInfo对象，以便访问startScore属性
+        // 计算总玩家数
+        const totalPlayers = 
+            150000 + // 青铜 约45%
+            100000 + // 白银 约30%
+            50000 + // 黄金 约15%
+            20000 + // 钻石 约6%
+            10000 + // 王者 约3%
+            5000;   // 长城 约1%
+
+        // 根据段位计算应该超越的玩家百分比
+        let targetPercentile;
+        switch(currentRankInfo.rankName) {
+            case "长城":
+                // 长城段位至少超越85%的玩家
+                targetPercentile = 85 + (currentRankInfo.level - 1) * 3 + getRandom() * 2;
+                break;
+            case "王者":
+                // 王者段位至少超越80%的玩家
+                targetPercentile = 80 + (currentRankInfo.level - 1) * 2 + getRandom() * 2;
+                break;
+            case "钻石":
+                // 钻石段位至少超越70%的玩家
+                targetPercentile = 70 + (currentRankInfo.level - 1) * 2 + getRandom() * 2;
+                break;
+            case "黄金":
+                // 黄金段位至少超越50%的玩家
+                targetPercentile = 50 + (currentRankInfo.level - 1) * 3 + getRandom() * 3;
+                break;
+            case "白银":
+                // 白银段位至少超越30%的玩家
+                targetPercentile = 30 + (currentRankInfo.level - 1) * 4 + getRandom() * 3;
+                break;
+            case "青铜":
+                // 青铜段位根据等级超越0-30%的玩家
+                targetPercentile = (currentRankInfo.level - 1) * 7 + getRandom() * 5;
+                break;
+            default:
+                targetPercentile = 0;
+        }
+        
+        // 确保百分比在合理范围内
+        targetPercentile = Math.min(99, Math.max(0, targetPercentile));
+        
+        // 根据目标百分比计算应该低于当前分数的玩家数量
+        const playersBelow = Math.floor(totalPlayers * (targetPercentile / 100));
+        
+        // 添加一些随机波动，但确保不会超过总玩家数
+        const randomFactor = Math.floor(getRandom() * 500) - 250;
+        return Math.max(0, Math.min(totalPlayers, playersBelow + randomFactor));
+    }
+
+    private calculateRank(score: number): number {
+        // 如果有保存的段位信息且分数相同，直接返回保存的排名
+        if (this.savedRankInfo && this.savedRankInfo.score === score) {
+            return this.savedRankInfo.rank;
+        }
+
+        const totalPlayers = RankConfig.getTotalPlayers();
         const rankInfo = RankConfig.getRankByScore(score);
         
-        // 累计所有比当前段位高的玩家
+        // 使用分数作为随机种子以确保相同分数得到相同结果
+        const seed = score % 10000;
+        const getRandom = () => {
+            const x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
+        };
+
+        // 根据段位计算排名
+        let playersAbove = 0;
         for (const rank of RankConfig.RANKS) {
-            if (rank.startScore > rankInfo.startScore) {
-                basePlayers += rank.totalPlayers;
+            if (rank.startScore > score) {
+                playersAbove += rank.totalPlayers;
+            } else if (rank === rankInfo) {
+                // 在当前段位中随机分配排名
+                const rankPlayers = Math.floor(rank.totalPlayers * getRandom());
+                playersAbove += rankPlayers;
+                break;
             }
         }
-        
-        // 在当前段位内的排名
-        const currentRank = RankConfig.RANKS.find(r => r.name === rankInfoResult.rankName);
-        if (currentRank) {
-            // 计算在当前段位内的百分比位置
-            const percentInRank = (score - currentRank.startScore) / 
-                                  (RankConfig.RANKS.find(r => r.startScore > currentRank.startScore)?.startScore - currentRank.startScore || 15000);
-            
-            // 应用随机因子，使排名更自然
-            const randomizedPercent = Math.max(0, Math.min(1, percentInRank + (getRandom() * 0.1 - 0.05)));
-            
-            // 计算当前段位内超越的玩家数量
-            const playersInCurrentRank = Math.floor(currentRank.totalPlayers * randomizedPercent);
-            
-            // 总排名 = 更高段位所有玩家 + 当前段位超越玩家
-            return currentRank.totalPlayers - playersInCurrentRank + basePlayers;
-        }
-        
-        // 兜底返回
-        return 100000 - Math.floor(score / 10);
+
+        return Math.max(1, Math.min(totalPlayers, playersAbove + 1));
     }
 
     public getCurrentPlayerEntry(): LeaderboardEntry {
-        // 如果有保存的排名信息，使用它
-        if (this.savedRankInfo) {
+        // 返回24小时内的最高战绩
+        if (this.savedRankInfo && this.savedRankInfo.score === this.bestScore) {
             return this.savedRankInfo;
         }
-        
-        // 否则创建一个默认的排名信息
-        const rankInfo = this.getRankInfo(0); // 青铜默认
-        return {
-            rank: RankConfig.getTotalPlayers(),
-            score: 0,
+
+        const rankInfo = this.getRankInfo(this.bestScore);
+        const rank = this.calculateRank(this.bestScore);
+        const totalPlayers = RankConfig.getTotalPlayers();
+        const percentile = Math.min(99, Math.max(0, Math.floor((totalPlayers - rank) / totalPlayers * 100)));
+
+        this.savedRankInfo = {
+            rank,
+            score: this.bestScore,
             rankName: rankInfo.rankName,
-            level: 1,
-            percentile: 0
+            level: rankInfo.level,
+            percentile
         };
+        localStorage.setItem(LeaderboardManager.RANK_STORAGE_KEY, JSON.stringify(this.savedRankInfo));
+
+        return this.savedRankInfo;
     }
 
     public getMonthlyPlayerEntry(): LeaderboardEntry {
-        if (this.monthlyRankInfo) {
+        // 返回30天内的最高战绩
+        if (this.monthlyRankInfo && this.monthlyRankInfo.score === this.monthlyBestScore) {
             return this.monthlyRankInfo;
         }
-        
-        return this.getCurrentPlayerEntry(); // 默认使用当前信息
+
+        const rankInfo = this.getRankInfo(this.monthlyBestScore);
+        const rank = this.calculateRank(this.monthlyBestScore);
+        const totalPlayers = RankConfig.getTotalPlayers();
+        const percentile = Math.min(99, Math.max(0, Math.floor((totalPlayers - rank) / totalPlayers * 100)));
+
+        this.monthlyRankInfo = {
+            rank,
+            score: this.monthlyBestScore,
+            rankName: rankInfo.rankName,
+            level: rankInfo.level,
+            percentile
+        };
+        localStorage.setItem(LeaderboardManager.MONTHLY_RANK_STORAGE_KEY, JSON.stringify(this.monthlyRankInfo));
+
+        return this.monthlyRankInfo;
     }
 }

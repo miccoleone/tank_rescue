@@ -1,7 +1,4 @@
-const { regClass, property } = Laya;
-import { Pilot } from "./Pilot";
-import { PilotPool } from "./PilotPool";
-import { EndlessModeGame } from "./EndlessModeGame";
+const { regClass } = Laya;
 
 @regClass()
 export class ExplosionManager {
@@ -13,22 +10,34 @@ export class ExplosionManager {
     private static readonly COLS = 5;           // 每行帧数
     private static readonly ROWS = 5;           // 每列帧数
     private isResourceLoaded: boolean = false;
+    private isSoundLoaded: boolean = false;
     private texture: Laya.Texture;
     private frames: Laya.Texture[] = [];
-    private boomSound: Laya.SoundChannel;
+    private explosionSound: string = "resources/explosion.mp3";
 
     private constructor() {
         // 预加载爆炸动画资源
         const explosionUrl = "resources/explosion.png";
         console.log("ExplosionManager: 开始加载爆炸动画资源");
         Laya.loader.load(explosionUrl, Laya.Handler.create(this, this.onResourceLoaded));
+        
+        // 预加载爆炸音效
+        console.log("ExplosionManager: 开始加载爆炸音效");
+        Laya.SoundManager.setMusicVolume(1);
+        Laya.SoundManager.setSoundVolume(1);
+        Laya.loader.load(this.explosionSound, Laya.Handler.create(this, this.onSoundLoaded));
     }
-    
+
     public static get instance(): ExplosionManager {
         if (!this._instance) {
             this._instance = new ExplosionManager();
         }
         return this._instance;
+    }
+
+    private onSoundLoaded(): void {
+        this.isSoundLoaded = true;
+        console.log("ExplosionManager: 爆炸音效加载完成");
     }
 
     private onResourceLoaded(): void {
@@ -68,41 +77,38 @@ export class ExplosionManager {
             console.error("ExplosionManager: 资源加载失败:", error);
         }
     }
-    
-    public playExplosion(x: number, y: number, parent: Laya.Sprite, isEnemyTank: boolean = false): void {
+
+    public playExplosion(x: number, y: number, parent: Laya.Sprite, isEnemy: boolean = false): void {
         if (!this.isResourceLoaded || this.frames.length === 0) {
             console.warn("ExplosionManager: 爆炸动画资源尚未加载完成");
+            return;
+        }
+        
+        // 如果父容器已经被销毁，不执行爆炸效果
+        if (!parent || parent.destroyed) {
+            console.warn("ExplosionManager: 父容器已销毁，无法播放爆炸效果");
             return;
         }
 
         try {
             // 播放爆炸音效
-            this.boomSound = Laya.SoundManager.playSound("resources/explosion.mp3", 1);
-            this.boomSound.volume = 1;
-
+            if (this.isSoundLoaded) {
+                Laya.SoundManager.playSound(this.explosionSound, 1);
+            }
+            
             // 创建动画容器
             const container = new Laya.Sprite();
+            container.name = "ExplosionEffect";
             container.pos(x, y);
             container.zOrder = 100;
             parent.addChild(container);
-            
+
             // 创建动画显示对象
             const animation = new Laya.Sprite();
             animation.pivot(ExplosionManager.FRAME_WIDTH / 2, ExplosionManager.FRAME_HEIGHT / 2);
             animation.scale(1.5, 1.5);
-            
-            // 添加颜色滤镜，使爆炸效果更加轻盈，偏向烟白色
-            const lightMatrix = [
-                1.5, 0, 0, 0, 100,  // R: 大幅增加亮度
-                0, 1.5, 0, 0, 100,  // G: 大幅增加亮度
-                0, 0, 1.5, 0, 100,  // B: 大幅增加亮度
-                0, 0, 0, 0.7, 0     // A: 降低不透明度使效果更轻盈
-            ];
-            const lightFilter = new Laya.ColorFilter(lightMatrix);
-            animation.filters = [lightFilter];
-            
             container.addChild(animation);
-            
+
             // 当前帧索引
             let currentFrame = 0;
             let frameDelay = Math.floor(60 / ExplosionManager.FRAME_RATE); // 计算帧延迟
@@ -110,6 +116,12 @@ export class ExplosionManager {
             
             // 创建帧循环
             const frameLoop = () => {
+                // 如果容器或父容器被销毁，立即清理资源并返回
+                if (container.destroyed || !parent || parent.destroyed) {
+                    Laya.timer.clear(this, frameLoop);
+                    return;
+                }
+                
                 frameCount++;
                 if (frameCount < frameDelay) return;
                 frameCount = 0;
@@ -117,43 +129,30 @@ export class ExplosionManager {
                 if (currentFrame >= this.frames.length) {
                     // 动画完成，清理资源
                     Laya.timer.clear(this, frameLoop);
+                    
+                    // 确保清理所有子对象
+                    animation.graphics.clear();
+                    animation.removeSelf();
+                    animation.destroy();
+                    
+                    container.removeSelf();
                     container.destroy();
-
-                    // 如果是敌方坦克爆炸，生成驾驶员
-                    if (isEnemyTank && !(parent.parent.getComponent(Laya.Script) instanceof EndlessModeGame)) {
-                        this.spawnPilots(x, y, parent);
-                    }
                     return;
                 }
 
                 // 清除之前的绘制
                 animation.graphics.clear();
-                
+
                 // 绘制当前帧
                 animation.graphics.drawTexture(this.frames[currentFrame], 0, 0);
 
                 currentFrame++;
             };
-            
+
             // 启动帧循环
             Laya.timer.frameLoop(1, this, frameLoop);
         } catch (error) {
             console.error("ExplosionManager: 播放动画失败:", error);
         }
-    }
-
-    private spawnPilots(x: number, y: number, parent: Laya.Sprite): void {
-        // 从对象池获取驾驶员
-        const pilot = PilotPool.instance.getPilot();
-        
-        // 计算散落位置（在爆炸点周围随机位置）
-        const angle = Math.random() * Math.PI * 2;
-        const distance = Math.random() * 30 + 20; // 20-50像素的随机距离
-        const pilotX = x + Math.cos(angle) * distance;
-        const pilotY = y + Math.sin(angle) * distance;
-        
-        // 设置位置并添加到场景
-        pilot.pos(pilotX, pilotY);
-        parent.addChild(pilot);
     }
 }

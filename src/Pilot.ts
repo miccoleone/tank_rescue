@@ -1,5 +1,6 @@
 const { regClass } = Laya;
 import { PilotPool } from "./PilotPool";
+import { Achievement } from "./Achievement";
 
 @regClass()
 export class Pilot extends Laya.Sprite {
@@ -223,6 +224,9 @@ export class Pilot extends Laya.Sprite {
         
         // 创建得分弹出动画
         this.createScorePopup();
+
+        // 更新军衔 - 每救援一名驾驶员增加一名战士
+        Achievement.instance.addRescuedSoldier();
         
         // 如果是池对象，通知对象池回收
         if (this.isPoolObject) {

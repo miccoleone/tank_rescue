@@ -1,4 +1,5 @@
 const { regClass, property } = Laya;
+import { SceneManager } from "./SceneManager";
 
 @regClass()
 export class Main {
@@ -17,7 +18,13 @@ export class Main {
     }
 
     onConfigLoaded(): void {
-        //加载IDE指定的场景
-        Laya.Scene.open("Scene.ls");
+        // 设置游戏屏幕适配
+        Laya.stage.scaleMode = Laya.Stage.SCALE_FIXED_WIDTH;
+        Laya.stage.alignH = Laya.Stage.ALIGN_CENTER;
+        Laya.stage.alignV = Laya.Stage.ALIGN_MIDDLE;
+        Laya.stage.screenMode = Laya.Stage.SCREEN_HORIZONTAL;
+        
+        // 通过SceneManager跳转到首页
+        SceneManager.instance.navigateToScene("HomePage");
     }
 }

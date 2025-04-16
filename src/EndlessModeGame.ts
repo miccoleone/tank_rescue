@@ -7,6 +7,7 @@ import { EnemyTank } from "./EnemyTank";
 import { LeaderboardManager } from "./LeaderboardManager";
 import { Pilot } from "./Pilot";
 import { PilotPool } from "./PilotPool";
+import { SceneManager } from "./SceneManager";
 
 // 段位系统配置
 interface RankLevel {
@@ -16,7 +17,7 @@ interface RankLevel {
 }
 
 @regClass()
-export class GameMain extends Laya.Script {
+export class EndlessModeGame extends Laya.Script {
     private static readonly MAP_WIDTH = 1334; // iPhone 6/7/8 Plus 横屏宽度
     private static readonly MAP_HEIGHT = 750; // iPhone 6/7/8 Plus 横屏高度
     private static readonly MIN_BOX_COUNT = 15; // 最小箱子数量
@@ -76,10 +77,10 @@ export class GameMain extends Laya.Script {
     private invincibleEffect: Laya.Sprite | null = null;
     private isInvincible: boolean = false;
     private invincibleTimer: number = 0;
-    
+    private homeBtn: Laya.Sprite;
     // 开火按钮透明度常量
-    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.2;  // 正常状态透明度
-    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.7; // 按下状态透明度
+    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
+    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
     
     constructor() {
         super();
@@ -103,8 +104,8 @@ export class GameMain extends Laya.Script {
             "resources/king.png",
             "resources/greatwall.png",
             "resources/闪电.png",
+            "resources/home.png",
             "resources/circle_60_red.png",
-            "resources/circle_25.png",
             "resources/circle_60.png"
         ], Laya.Handler.create(this, () => {
             // 确保爆炸管理器初始化
@@ -119,9 +120,6 @@ export class GameMain extends Laya.Script {
         Laya.stage.alignH = Laya.Stage.ALIGN_CENTER;
         Laya.stage.alignV = Laya.Stage.ALIGN_MIDDLE;
         Laya.stage.screenMode = Laya.Stage.SCREEN_HORIZONTAL;
-        
-        // 设置黑色背景
-        Laya.stage.bgColor = "#000000";
         
         // 初始化驾驶员对象池
         PilotPool.instance;
@@ -141,18 +139,23 @@ export class GameMain extends Laya.Script {
         // 初始化积分和段位显示
         this.initScoreDisplay();
         // 初始化排行榜按钮
-        this.initLeaderboardButton();
+        // this.initLeaderboardButton();
         // 初始化箱子
         this.initBoxes();
         // 开始箱子检查定时器
-        Laya.timer.loop(GameMain.BOX_CHECK_INTERVAL, this, this.checkBoxCount);
+        Laya.timer.loop(EndlessModeGame.BOX_CHECK_INTERVAL, this, this.checkBoxCount);
         // 开始敌人检查定时器
-        Laya.timer.loop(GameMain.ENEMY_CHECK_INTERVAL, this, this.checkEnemyCount);
+        Laya.timer.loop(EndlessModeGame.ENEMY_CHECK_INTERVAL, this, this.checkEnemyCount);
         // 开始碰撞检测
         Laya.timer.frameLoop(1, this, this.checkCollisions);
+        // 初始化主页按钮
+        this.initHomeButton();
     }
 
     private initGameScene(): void {
+        // 强制设置背景颜色为白色 - 这应该会覆盖任何默认背景
+        Laya.stage.bgColor = "#ffffff";
+        
         // 创建游戏容器
         this.gameBox = new Laya.Sprite();
         this.gameBox.name = "GameBox";
@@ -162,13 +165,13 @@ export class GameMain extends Laya.Script {
         const gridBackground = new Laya.Sprite();
         gridBackground.name = "GridBackground";
         
-        // 设置背景颜色为白色
-        Laya.stage.bgColor = "#ffffff";
-        
-        // 绘制格子
-        const gridSize = GameMain.GRID_SIZE; // 使用已定义的格子大小
+        // 首先确保背景是白色的
         const width = Laya.stage.width;
         const height = Laya.stage.height;
+        gridBackground.graphics.drawRect(0, 0, width, height, "#ffffff");
+        
+        // 绘制格子
+        const gridSize = EndlessModeGame.GRID_SIZE; // 使用已定义的格子大小
         
         // 使用浅灰色绘制格子线
         const gridGraphics = gridBackground.graphics;
@@ -194,7 +197,7 @@ export class GameMain extends Laya.Script {
         
         // 使用tank.png作为坦克图片
         let tankImage = new Laya.Image();
-        tankImage.skin = "resources/Retina/tank_sand.png";
+        tankImage.skin = "resources/Retina/tank_red.png";
         tankImage.width = 30;
         tankImage.height = 30;
         tankImage.pivot(15, 15);
@@ -235,8 +238,8 @@ export class GameMain extends Laya.Script {
         // 创建按钮背景
         let btnBg = new Laya.Sprite();
         btnBg.name = "FireButtonBg";
-        // btnBg.mouseEnabled = true;
-        // btnBg.mouseThrough = false;
+        btnBg.mouseEnabled = true;
+        btnBg.mouseThrough = false;
         
         // 使用原始大小的PNG图片作为背景
         const btnRadius = 60; // 按钮半径
@@ -245,7 +248,8 @@ export class GameMain extends Laya.Script {
         bgImage.width = btnRadius * 2;  // 直径 = 半径 * 2
         bgImage.height = btnRadius * 2;
         bgImage.pivot(btnRadius, btnRadius);  // 轴心点设置为中心
-        bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+        bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
+        bgImage.name = "FireButtonBgImage";
         
         // 设置鼠标事件支持
         bgImage.mouseEnabled = true;
@@ -296,7 +300,7 @@ export class GameMain extends Laya.Script {
             this.onFireEnd();
         });
         
-        this.owner.addChild(this.fireBtn);
+        this.owner.addChild(this.fireBtn);              13058055954
     }
 
     private onJoystickMove(angle: number, strength: number): void {
@@ -311,7 +315,7 @@ export class GameMain extends Laya.Script {
         this.tank.rotation = angle;
         
         // 计算移动距离
-        let speed = 5 * strength;
+        let speed = 3 * strength;
         let radian = angle * Math.PI / 180;
         
         // 计算新位置
@@ -364,7 +368,7 @@ export class GameMain extends Laya.Script {
         let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
         const bgImage = btnBg.getChildAt(0) as Laya.Image;
         if (bgImage) {
-            bgImage.alpha = GameMain.FIRE_BTN_PRESSED_ALPHA;
+            bgImage.alpha = EndlessModeGame.FIRE_BTN_PRESSED_ALPHA;
         }
         
         // 播放开火音效并发射子弹
@@ -376,7 +380,7 @@ export class GameMain extends Laya.Script {
         let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
         const bgImage = btnBg.getChildAt(0) as Laya.Image;
         if (bgImage) {
-            bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+            bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
         }
     }
 
@@ -391,7 +395,7 @@ export class GameMain extends Laya.Script {
         this.fireSound.volume = 0.6;
         
         // 从对象池获取子弹
-        let bullet = BulletPool.instance.getItem(GameMain.BULLET_SIGN);
+        let bullet = BulletPool.instance.getItem(EndlessModeGame.BULLET_SIGN);
         if (!bullet) return;
         
         bullet.name = "Bullet_" + this.bullets.length;
@@ -403,7 +407,7 @@ export class GameMain extends Laya.Script {
         // 计算基础速度和段位加成
         let baseSpeed = 15;
         const currentRankInfo = this.getRankInfo(this.score);
-        const rankBonus = Math.floor(Math.floor(this.score / GameMain.POINTS_PER_RANK) / 4) * 5; // 每个大段位（4个小段位）增加5点速度
+        const rankBonus = Math.floor(Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK) / 4) * 5; // 每个大段位（4个小段位）增加5点速度
         let speed = baseSpeed + rankBonus;
         
         let radian = bullet.rotation * Math.PI / 180;
@@ -424,11 +428,11 @@ export class GameMain extends Laya.Script {
             for (const enemy of this.enemyTanks) {
                 if (!enemy.destroyed && this.checkBulletEnemyCollision(bullet, enemy)) {
                     // 击中敌方坦克
-                    this.score += GameMain.ENEMY_TANK_SCORE;
+                    this.score += EndlessModeGame.ENEMY_TANK_SCORE;
                     this.updateScoreDisplay();
                     ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox, true);
                     // 添加得分弹出效果
-                    this.createScorePopup(enemy.x, enemy.y, GameMain.ENEMY_TANK_SCORE);
+                    this.createScorePopup(enemy.x, enemy.y, EndlessModeGame.ENEMY_TANK_SCORE);
                     enemy.destroy();
                     this.recycleBullet(bullet);
                     return;
@@ -475,7 +479,7 @@ export class GameMain extends Laya.Script {
                 Laya.timer.clearAll(bullet);
         
         // 回收到对象池
-                BulletPool.instance.recover(GameMain.BULLET_SIGN, bullet);
+                BulletPool.instance.recover(EndlessModeGame.BULLET_SIGN, bullet);
     }
 
     private checkBulletCollision(bullet: Laya.Sprite, target: Box): boolean {
@@ -588,7 +592,7 @@ export class GameMain extends Laya.Script {
     }
 
     private getRankInfo(score: number): { rankName: string, level: number, icons: string[] } {
-        const currentLevel = Math.floor(score / GameMain.POINTS_PER_RANK);
+        const currentLevel = Math.floor(score / EndlessModeGame.POINTS_PER_RANK);
         
         // 长城段位（66000分以上）
         if (score >= 66000) {
@@ -610,8 +614,8 @@ export class GameMain extends Laya.Script {
         }
         
         let totalLevels = 0;
-        for (let i = 0; i < GameMain.RANKS.length; i++) {
-            const rank = GameMain.RANKS[i];
+        for (let i = 0; i < EndlessModeGame.RANKS.length; i++) {
+            const rank = EndlessModeGame.RANKS[i];
             totalLevels += rank.count;
             
             if (currentLevel < totalLevels) {
@@ -677,14 +681,14 @@ export class GameMain extends Laya.Script {
         
         // 检查段位变化
         if (this.lastRankIndex !== -1) {
-            const newRankIndex = GameMain.RANKS.findIndex(r => r.name === rankInfo.rankName);
+            const newRankIndex = EndlessModeGame.RANKS.findIndex(r => r.name === rankInfo.rankName);
             
             if (newRankIndex !== -1 && newRankIndex !== this.lastRankIndex) {
                 this.lastRankIndex = newRankIndex;
                 // 不在这里调用checkRankUp，避免递归
             }
         } else {
-            this.lastRankIndex = GameMain.RANKS.findIndex(r => r.name === rankInfo.rankName);
+            this.lastRankIndex = EndlessModeGame.RANKS.findIndex(r => r.name === rankInfo.rankName);
         }
     }
 
@@ -692,7 +696,7 @@ export class GameMain extends Laya.Script {
         // 初始化所有升级分数点
         this.rankUpScores = [];
         for (let i = 1; i <= 22; i++) { // 22个等级点，对应66000分
-            this.rankUpScores.push(i * GameMain.POINTS_PER_RANK);
+            this.rankUpScores.push(i * EndlessModeGame.POINTS_PER_RANK);
         }
     }
 
@@ -859,7 +863,7 @@ export class GameMain extends Laya.Script {
         this.boxes = this.boxes.filter(box => !box.destroyed);
         
         // 如果箱子数量少于最小值，添加新箱子
-        while (this.boxes.length < GameMain.MIN_BOX_COUNT) {
+        while (this.boxes.length < EndlessModeGame.MIN_BOX_COUNT) {
             this.createRandomBox();
         }
     }
@@ -869,7 +873,7 @@ export class GameMain extends Laya.Script {
     }
 
     private getRequiredEnemyCount(): number {
-        const currentLevel = Math.floor(this.score / GameMain.POINTS_PER_RANK);
+        const currentLevel = Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK);
         if (currentLevel < 6) { // 青铜和白银
             return 3;
         } else if (currentLevel < 9) { // 黄金
@@ -958,7 +962,7 @@ export class GameMain extends Laya.Script {
             const dy = this.tank.y - enemy.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             
-            if (distance < GameMain.COLLISION_DISTANCE) {
+            if (distance < EndlessModeGame.COLLISION_DISTANCE) {
                 // 如果处于无敌状态，不触发游戏结束
                 if (!this.isInvincible) {
                     this.handleGameOver();
@@ -1037,7 +1041,7 @@ export class GameMain extends Laya.Script {
                     Laya.SoundManager.playSound("resources/score.mp3", 1);
                     
                     // 增加分数
-                    this.score += GameMain.PILOT_RESCUE_SCORE;
+                    this.score += EndlessModeGame.PILOT_RESCUE_SCORE;
                     this.updateScoreDisplay();
                     
                     // 增加救援计数并更新显示
@@ -1066,7 +1070,7 @@ export class GameMain extends Laya.Script {
             if (btnBg) {
                 const bgImage = btnBg.getChildAt(0) as Laya.Image;
                 if (bgImage) {
-                    bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+                    bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
                 }
             }
         }
@@ -1115,7 +1119,7 @@ export class GameMain extends Laya.Script {
         if (this.rescuedPilots > 0) {
             title.text = `英雄 你成功救下 ${this.rescuedPilots}名驾驶员！`;
         } else {
-            title.text = "你尽力了";
+            title.text = `恭喜 你获得「${rankInfo.rankName}」勋章！`;
         }
         title.fontSize = 24;
         title.color = "#333333";
@@ -1280,8 +1284,8 @@ export class GameMain extends Laya.Script {
                 
                 // 只在当前箱子数量少于15个时才生成新箱子
                 const activeBoxCount = this.boxes.filter(box => !box.destroyed).length;
-                if (activeBoxCount < GameMain.MIN_BOX_COUNT) {
-                    const boxesToAdd = GameMain.MIN_BOX_COUNT - activeBoxCount;
+                if (activeBoxCount < EndlessModeGame.MIN_BOX_COUNT) {
+                    const boxesToAdd = EndlessModeGame.MIN_BOX_COUNT - activeBoxCount;
                     for (let i = 0; i < boxesToAdd; i++) {
                         this.createRandomBox();
                     }
@@ -1396,7 +1400,7 @@ export class GameMain extends Laya.Script {
             if (btnBg) {
                 const bgImage = btnBg.getChildAt(0) as Laya.Image;
                 if (bgImage) {
-                    bgImage.alpha = GameMain.FIRE_BTN_NORMAL_ALPHA;
+                    bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
                 }
             }
         }
@@ -1574,22 +1578,22 @@ export class GameMain extends Laya.Script {
         if (currentPlayerData.rankName.includes("长城")) {
             iconPath = "resources/greatwall.png";
             // 长城段位显示实际星级数量
-            starCount = Math.floor((currentPlayerData.score - 66000) / GameMain.POINTS_PER_RANK) + 1;
+            starCount = Math.floor((currentPlayerData.score - 66000) / EndlessModeGame.POINTS_PER_RANK) + 1;
         } else if (currentPlayerData.rankName.includes("青铜")) {
             iconPath = "resources/moon.png";
-            starCount = Math.min(4, Math.ceil(currentPlayerData.score / GameMain.POINTS_PER_RANK) % 4 || 4);
+            starCount = Math.min(4, Math.ceil(currentPlayerData.score / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
         } else if (currentPlayerData.rankName.includes("白银")) {
             iconPath = "resources/star.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 12000) / GameMain.POINTS_PER_RANK) % 4 || 4);
+            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 12000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
         } else if (currentPlayerData.rankName.includes("黄金")) {
             iconPath = "resources/sun.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 24000) / GameMain.POINTS_PER_RANK) % 4 || 4);
+            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 24000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
         } else if (currentPlayerData.rankName.includes("钻石")) {
             iconPath = "resources/diamond.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 36000) / GameMain.POINTS_PER_RANK) % 4 || 4);
+            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 36000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
         } else if (currentPlayerData.rankName.includes("王者")) {
             iconPath = "resources/king.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 48000) / GameMain.POINTS_PER_RANK) % 4 || 4);
+            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 48000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
         }
 
         // 添加星级图标
@@ -1792,7 +1796,7 @@ export class GameMain extends Laya.Script {
         if (!this.isInvincible) return;
         
         const currentTime = Date.now();
-        if (currentTime - this.invincibleTimer >= GameMain.INVINCIBLE_DURATION) {
+        if (currentTime - this.invincibleTimer >= EndlessModeGame.INVINCIBLE_DURATION) {
             // 无敌时间结束
             this.isInvincible = false;
             if (this.invincibleEffect) {
@@ -1806,5 +1810,117 @@ export class GameMain extends Laya.Script {
                 this.invincibleEffect.pos(this.tank.x, this.tank.y);
             }
         }
+    }
+
+    private initHomeButton(): void {
+        // 创建按钮容器
+        const btnContainer = new Laya.Sprite();
+        btnContainer.name = "HomeButton";
+        
+        // 创建 Home 图标，使用原始 32x32 大小
+        const homeIcon = new Laya.Image();
+        homeIcon.skin = "resources/home.png";
+        homeIcon.width = 32;
+        homeIcon.height = 32;
+        // 设置图标的轴心点为中心
+        homeIcon.pivot(16, 0);
+        homeIcon.alpha = 0.5;
+        btnContainer.addChild(homeIcon);
+        
+        // 使用与开火按钮相同的水平位置
+        const horizontalMargin = Math.round(Laya.stage.width * 0.17);
+        const verticalMargin = 20;
+        btnContainer.pos(
+            Math.round(Laya.stage.width - horizontalMargin),
+            verticalMargin
+        );
+        
+        // 添加点击区域（相对于轴心点调整）
+        const hitArea = new Laya.HitArea();
+        hitArea.hit.drawRect(-16, 0, 32, 32, "#000000");
+        btnContainer.hitArea = hitArea;
+        
+        // 确保按钮可以接收点击事件
+        btnContainer.mouseEnabled = true;
+        btnContainer.mouseThrough = false;
+        
+        // 添加点击事件，直接返回主页
+        btnContainer.on(Laya.Event.CLICK, this, () => {
+            console.log("Home button clicked"); // 添加调试日志
+            Laya.SoundManager.playSound("resources/click.mp3", 1);
+            this.destroyGame();  // 先清理游戏
+            // SceneManager.instance.toHomePage();  // 再返回主页
+            SceneManager.instance.navigateToScene("HomePage");
+        });
+        
+        this.homeBtn = btnContainer;
+        this.owner.addChild(this.homeBtn);
+    }
+
+    private destroyGame(): void {
+        // 停止所有计时器
+        Laya.timer.clearAll(this);
+        
+        // 停止背景音乐
+        if (this.bgMusic) {
+            this.bgMusic.stop();
+            this.bgMusic = null;
+        }
+        
+        // 停止其他音效
+        if (this.fireSound) {
+            this.fireSound.stop();
+            this.fireSound = null;
+        }
+        if (this.levelUpSound) {
+            this.levelUpSound.stop();
+            this.levelUpSound = null;
+        }
+        // if (this.clickMusic) {
+        //     this.clickMusic.stop();
+        //     this.clickMusic = null;
+        // }
+        
+        // 销毁所有敌方坦克
+        this.enemyTanks.forEach(enemy => {
+            if (!enemy.destroyed) {
+                enemy.destroy();
+            }
+        });
+        this.enemyTanks = [];
+        
+        // 销毁所有箱子
+        this.boxes.forEach(box => {
+            if (!box.destroyed) {
+                box.destroy();
+            }
+        });
+        this.boxes = [];
+        
+        // 销毁所有子弹
+        this.bullets.forEach(bullet => {
+            if (!bullet.destroyed) {
+                this.recycleBullet(bullet);
+            }
+        });
+        this.bullets = [];
+        
+        // 销毁玩家坦克
+        if (this.tank && !this.tank.destroyed) {
+            this.tank.destroy();
+        }
+        
+        // 销毁游戏容器
+        if (this.gameBox && !this.gameBox.destroyed) {
+            this.gameBox.destroy();
+        }
+        
+        // 重置游戏数据
+        this.score = 0;
+        this.killCount = 0;
+        this.woodBoxCount = 0;
+        this.metalBoxCount = 0;
+        this.treasureBoxCount = 0;
+        this.lastRankIndex = -1;
     }
 } 

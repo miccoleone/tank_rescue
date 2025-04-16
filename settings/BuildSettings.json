@@ -1,6 +1,6 @@
 {
   "name": "方块大逃亡丶坦克来袭",
-  "startupScene": "res://9b931ecf-fde9-44dd-acf3-15f8dc807965",
+  "startupScene": "res://c9a2b634-ec50-411f-977e-c50cdf242b81",
   "android": {
     "targetArchitectures": {
       "ARMv7": true,
