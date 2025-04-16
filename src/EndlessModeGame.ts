@@ -81,6 +81,8 @@ export class EndlessModeGame extends Laya.Script {
     // 开火按钮透明度常量
     private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
     private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
+    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
+    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
     
     constructor() {
         super();
@@ -238,6 +240,8 @@ export class EndlessModeGame extends Laya.Script {
         // 创建按钮背景
         let btnBg = new Laya.Sprite();
         btnBg.name = "FireButtonBg";
+        btnBg.mouseEnabled = true;
+        btnBg.mouseThrough = false;
         btnBg.mouseEnabled = true;
         btnBg.mouseThrough = false;
         
