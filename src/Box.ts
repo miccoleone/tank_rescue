@@ -7,7 +7,7 @@ export enum BoxType {
 }
 
 // 修改常量配置
-const BOX_SIZE = 30; // 箱子大小
+const BOX_SIZE = 32; // 箱子大小
 const PARTICLE_COUNT = 26; // 发光粒子数量
 const PARTICLE_RADIUS = 1; // 粒子大小
 const PARTICLE_COLORS = ["#FFD700", "#FFA500", "#FFFF00"]; // 粒子颜色
@@ -64,19 +64,6 @@ export class Box extends Laya.Sprite {
         image.height = BOX_SIZE;
         image.pivot(BOX_SIZE/2, BOX_SIZE/2);
         this.addChild(image);
-    }
-
-    private createMoonIcon(): void {
-        // 创建文本显示月亮emoji
-        const moonText = new Laya.Text();
-        moonText.text = "🌕";
-        moonText.fontSize = BOX_SIZE;
-        moonText.width = BOX_SIZE;
-        moonText.height = BOX_SIZE;
-        moonText.align = "center";
-        moonText.valign = "middle";
-        moonText.pivot(BOX_SIZE/2, BOX_SIZE/2);
-        this.addChild(moonText);
     }
 
     private createGlowEffect(): void {

@@ -1,6 +1,13 @@
 {
-    "modules": {
-        "laya.ui": true,
-        "laya.d3": true
-    }
+  "3D": {
+    "enableDynamicBatch": false,
+    "enableUniformBufferObject": false,
+    "enableMultiLight": false
+  },
+  "modules": {
+    "laya.ui": true
+  },
+  "splash": {
+    "fit": "center"
+  }
 }

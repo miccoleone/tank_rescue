@@ -9,6 +9,12 @@
   "name": "Scene2D",
   "width": 1136,
   "height": 640,
+  "_$comp": [
+    {
+      "_$type": "c77f7480-568b-474b-84d2-a220447e5686",
+      "scriptPath": "../src/GameEntry.ts"
+    }
+  ],
   "_$child": [
     {
       "_$id": "n9gjxcltvl",

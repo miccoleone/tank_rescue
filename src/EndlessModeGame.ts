@@ -8,6 +8,9 @@ import { LeaderboardManager } from "./LeaderboardManager";
 import { Pilot } from "./Pilot";
 import { PilotPool } from "./PilotPool";
 import { SceneManager } from "./SceneManager";
+import { TutorialManager } from "./TutorialManager";
+import { FireButton } from "./FireButton";
+
 
 // 段位系统配置
 interface RankLevel {
@@ -46,7 +49,9 @@ export class EndlessModeGame extends Laya.Script {
     private tank: Laya.Sprite;
     
     private joystick: Joystick;
-    private fireBtn: Laya.Sprite;
+    /** @prop {name: fireBtn, tips: "开火按钮", type: Node, default: null}*/
+    @property(FireButton)
+    private fireBtn: FireButton;
     private bullets: Laya.Sprite[] = [];
     private boxes: Box[] = [];
     private score: number = 0;
@@ -81,8 +86,6 @@ export class EndlessModeGame extends Laya.Script {
     // 开火按钮透明度常量
     private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
     private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
-    private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
-    private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
     
     constructor() {
         super();
@@ -95,7 +98,6 @@ export class EndlessModeGame extends Laya.Script {
             "resources/woodBox.png",
             "resources/metalBox.png",
             "resources/explosion.png",
-            "resources/level_up.mp3",
             "resources/score.mp3",
             "resources/click.mp3",
             "resources/enemy-tank.png",
@@ -117,6 +119,8 @@ export class EndlessModeGame extends Laya.Script {
     }
 
     onAwake(): void {
+        console.log("EndlessModeGame onAwake");
+
         // 设置游戏屏幕适配
         Laya.stage.scaleMode = Laya.Stage.SCALE_FIXED_WIDTH;
         Laya.stage.alignH = Laya.Stage.ALIGN_CENTER;
@@ -152,6 +156,9 @@ export class EndlessModeGame extends Laya.Script {
         Laya.timer.frameLoop(1, this, this.checkCollisions);
         // 初始化主页按钮
         this.initHomeButton();
+
+        // 显示无尽模式教程提示
+        // TutorialManager.instance.showEndlessModeTip(this.owner as Laya.Sprite, 0, 0, true);
     }
 
     private initGameScene(): void {
@@ -234,77 +241,25 @@ export class EndlessModeGame extends Laya.Script {
         joystickContainer.on("joystickMove", this, this.onJoystickMove);
     }
     private initFireButton(): void {
-        this.fireBtn = new Laya.Sprite();
-        this.fireBtn.name = "FireButton";
+        // 创建开火按钮组件
+        const fireButtonSprite = new Laya.Sprite();
+        fireButtonSprite.name = "FireButtonContainer";
+        this.owner.addChild(fireButtonSprite);
         
-        // 创建按钮背景
-        let btnBg = new Laya.Sprite();
-        btnBg.name = "FireButtonBg";
-        btnBg.mouseEnabled = true;
-        btnBg.mouseThrough = false;
-        btnBg.mouseEnabled = true;
-        btnBg.mouseThrough = false;
-        
-        // 使用原始大小的PNG图片作为背景
-        const btnRadius = 60; // 按钮半径
-        const bgImage = new Laya.Image();
-        bgImage.skin = "resources/circle_60_red.png";
-        bgImage.width = btnRadius * 2;  // 直径 = 半径 * 2
-        bgImage.height = btnRadius * 2;
-        bgImage.pivot(btnRadius, btnRadius);  // 轴心点设置为中心
-        bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
-        bgImage.name = "FireButtonBgImage";
-        
-        // 设置鼠标事件支持
-        bgImage.mouseEnabled = true;
-        bgImage.mouseThrough = false;
-        
-        btnBg.addChild(bgImage);
-        this.fireBtn.addChild(btnBg);
-        
-        // // 加载闪电图标
-        let lightning = new Laya.Image();
-        lightning.name = "LightningIcon";
-        lightning.skin = "resources/闪电.png";
-        const iconRadius = 36;  // 闪电图标半径
-        lightning.width = iconRadius * 2;  // 直径 = 半径 * 2
-        lightning.height = iconRadius * 2;
-        lightning.pivot(iconRadius, iconRadius - 8);  // 轴心点设置为中心
-        lightning.alpha = 0.8;
-        
-        // 为闪电图标添加点击效果
-        this.fireBtn.addChild(lightning);
+        // 添加并初始化开火按钮组件
+        this.fireBtn = fireButtonSprite.addComponent(FireButton);
+        this.fireBtn.init(
+            () => this.onFireStart(),
+            () => this.onFireEnd()
+        );
 
-
-        // 添加到开火按钮
-        this.fireBtn.addChild(lightning);
-        
-        // 使用精确定位
+        // 设置按钮位置
         const horizontalMargin = Math.round(Laya.stage.width * 0.17);
         const verticalMargin = Math.round(Laya.stage.height * 0.25);
-        this.fireBtn.pos(
+        this.fireBtn.setPosition(
             Math.round(Laya.stage.width - horizontalMargin),
             Math.round(Laya.stage.height - verticalMargin)
         );
-        
-        // 添加按钮按下效果
-        bgImage.on(Laya.Event.MOUSE_DOWN, this, () => {
-            Laya.Tween.to(lightning, { scale: 0.9 }, 100); // 按下时轻微缩小
-            this.onFireStart();
-        });
-        
-        // 添加按钮抬起效果
-        bgImage.on(Laya.Event.MOUSE_UP, this, () => {
-            Laya.Tween.to(lightning, { scale: 1.0 }, 100); // 恢复原始大小
-            this.onFireEnd();
-        });
-        
-        bgImage.on(Laya.Event.MOUSE_OUT, this, () => {
-            Laya.Tween.to(lightning, { scale: 1.0 }, 100);
-            this.onFireEnd();
-        });
-        
-        this.owner.addChild(this.fireBtn);              13058055954
     }
 
     private onJoystickMove(angle: number, strength: number): void {
@@ -368,24 +323,12 @@ export class EndlessModeGame extends Laya.Script {
             return;
         }
         
-        // 按钮按下效果 - 调整透明度
-        let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
-        const bgImage = btnBg.getChildAt(0) as Laya.Image;
-        if (bgImage) {
-            bgImage.alpha = EndlessModeGame.FIRE_BTN_PRESSED_ALPHA;
-        }
-        
         // 播放开火音效并发射子弹
         this.onFire();
     }
 
     private onFireEnd(): void {
-        // 恢复按钮效果
-        let btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
-        const bgImage = btnBg.getChildAt(0) as Laya.Image;
-        if (bgImage) {
-            bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
-        }
+        // 不需要特殊处理
     }
 
     private onFire(): void {
@@ -404,8 +347,13 @@ export class EndlessModeGame extends Laya.Script {
         
         bullet.name = "Bullet_" + this.bullets.length;
         
+        // 计算子弹的起始位置（坦克前方20像素）
+        const radian = this.tank.rotation * Math.PI / 180;
+        const startX = this.tank.x + Math.cos(radian) * 20;
+        const startY = this.tank.y + Math.sin(radian) * 20;
+        
         // 设置子弹位置和旋转
-        bullet.pos(this.tank.x, this.tank.y);
+        bullet.pos(startX, startY);
         bullet.rotation = this.tank.rotation;
         
         // 计算基础速度和段位加成
@@ -414,7 +362,6 @@ export class EndlessModeGame extends Laya.Script {
         const rankBonus = Math.floor(Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK) / 4) * 5; // 每个大段位（4个小段位）增加5点速度
         let speed = baseSpeed + rankBonus;
         
-        let radian = bullet.rotation * Math.PI / 180;
         let vx = Math.cos(radian) * speed;
         let vy = Math.sin(radian) * speed;
         
@@ -717,7 +664,7 @@ export class EndlessModeGame extends Laya.Script {
             this.rankUpScores.shift();
             
             // 播放升级音效
-            this.levelUpSound = Laya.SoundManager.playSound("resources/level_up.mp3", 1);
+            this.levelUpSound = Laya.SoundManager.playSound("resources/fire.mp3", 1);
             this.levelUpSound.volume = 1;
             
             // 获取新的段位信息
@@ -1069,14 +1016,7 @@ export class EndlessModeGame extends Laya.Script {
     private handleGameOver(): void {
         // 禁用开火按钮
         if (this.fireBtn) {
-            this.fireBtn.mouseEnabled = false;
-            const btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
-            if (btnBg) {
-                const bgImage = btnBg.getChildAt(0) as Laya.Image;
-                if (bgImage) {
-                    bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
-                }
-            }
+            this.fireBtn.setEnabled(false);
         }
         
         // 添加灰色滤镜效果
@@ -1310,7 +1250,7 @@ export class EndlessModeGame extends Laya.Script {
                 
                 // 重新启用开火按钮
                 if (this.fireBtn) {
-                    this.fireBtn.mouseEnabled = true;
+                    this.fireBtn.setEnabled(true);
                 }
 
                 // 创建无敌效果并激活无敌状态
@@ -1373,289 +1313,6 @@ export class EndlessModeGame extends Laya.Script {
         item.addChild(value);
         
         return item;
-    }
-
-    private restartGame(): void {
-        // 重置统计数据
-        this.killCount = 0;
-        this.woodBoxCount = 0;
-        this.metalBoxCount = 0;
-        this.treasureBoxCount = 0;
-        this.rescuedPilots = 0;  // 重置救援计数
-        
-        // 重置分数和升级点
-        this.score = 0;
-        this.initRankUpScores(); // 重新初始化升级分数点
-        this.updateScoreDisplay();
-        this.updatePilotDisplay(); // 更新驾驶员显示
-        
-        // 重新创建玩家坦克
-        this.initPlayerTank();
-        
-        // 清理并重新生成箱子
-        this.boxes.forEach(box => box.destroy());
-        this.boxes = [];
-        this.initBoxes();
-        
-        // 重新启用开火按钮并重置状态
-        if (this.fireBtn) {
-            this.fireBtn.mouseEnabled = true;
-            const btnBg = this.fireBtn.getChildByName("FireButtonBg") as Laya.Sprite;
-            if (btnBg) {
-                const bgImage = btnBg.getChildAt(0) as Laya.Image;
-                if (bgImage) {
-                    bgImage.alpha = EndlessModeGame.FIRE_BTN_NORMAL_ALPHA;
-                }
-            }
-        }
-
-        // 创建无敌效果并激活无敌状态
-        this.createInvincibleEffect();
-        this.activateInvincible();
-    }
-
-    private createLocalFireworks(x: number, y: number): void {
-        // 创建一个容器来存放粒子
-        const container = new Laya.Sprite();
-        container.pos(x, y);
-        this.gameBox.addChild(container);
-
-        // 创建多个粒子
-        const particleCount = 12;
-        for (let i = 0; i < particleCount; i++) {
-            const particle = new Laya.Sprite();
-            const size = Math.random() * 3 + 2;
-            const colors = ["#FFD700", "#FFA500", "#FF6347"];
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            
-            particle.graphics.drawCircle(0, 0, size, color);
-            container.addChild(particle);
-
-            // 计算粒子的随机方向
-            const angle = (Math.PI * 2 / particleCount) * i;
-            const distance = Math.random() * 30 + 20;
-            const duration = Math.random() * 500 + 500;
-
-            // 创建粒子动画
-            Laya.Tween.to(particle, {
-                x: Math.cos(angle) * distance,
-                y: Math.sin(angle) * distance,
-                alpha: 0,
-                scaleX: 0.5,
-                scaleY: 0.5
-            }, duration, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
-                particle.destroy();
-            }));
-        }
-
-        // 一段时间后销毁容器
-        Laya.timer.once(1000, this, () => {
-            container.destroy();
-        });
-    }
-
-    private initLeaderboardButton(): void {
-        const btnContainer = new Laya.Sprite();
-        
-        // 绘制灰色方框边框
-        const width = 105;
-        const height = 38;
-        const borderWidth = 1;
-        
-        // 绘制边框
-        btnContainer.graphics.drawRect(0, 0, width, height, null, "#999999", borderWidth);
-        
-        // 创建文本标签
-        const label = new Laya.Text();
-        label.text = "我的战绩";
-        label.fontSize = 18;
-        label.color = "#666666";
-        label.width = width;
-        label.height = height;
-        label.align = "center";
-        label.valign = "middle";
-        label.alpha = 0.7;
-        btnContainer.addChild(label);
-        
-        // 设置按钮位置
-        const horizontalMargin = Laya.stage.width * 0.17 - 60;
-        const verticalMargin = 10;
-        btnContainer.pos(Laya.stage.width - horizontalMargin - width, verticalMargin);
-        
-        // 确保按钮可以接收触摸事件
-        btnContainer.mouseEnabled = true;
-        btnContainer.mouseThrough = false;
-        
-        // 添加点击区域
-        const hitArea = new Laya.HitArea();
-        hitArea.hit.drawRect(0, 0, width, height, "#000000");
-        btnContainer.hitArea = hitArea;
-        
-        // 添加触摸事件
-        btnContainer.on(Laya.Event.CLICK, this, () => {
-            // 点击音效
-            this.levelUpSound = Laya.SoundManager.playSound("resources/click.mp3", 1);
-            this.levelUpSound.volume = 1;
-            if (this.leaderboardPanel) {
-                this.hideLeaderboard();
-            } else {
-                this.showLeaderboard();
-            }
-        });
-        
-        // 添加触摸反馈效果
-        btnContainer.on(Laya.Event.MOUSE_DOWN, this, () => {
-            label.alpha = 0.5;
-        });
-        
-        btnContainer.on(Laya.Event.MOUSE_UP, this, () => {
-            label.alpha = 1;
-        });
-        
-        btnContainer.on(Laya.Event.MOUSE_OUT, this, () => {
-            label.alpha = 1;
-        });
-        
-        this.leaderboardBtn = btnContainer;
-        this.owner.addChild(this.leaderboardBtn);
-    }
-
-    private showLeaderboard(): void {
-        if (this.leaderboardMask) {
-            return; // 已经显示了排行榜
-        }
-
-        // 创建半透明遮罩
-        this.leaderboardMask = new Laya.Sprite();
-        this.leaderboardMask.graphics.drawRect(0, 0, Laya.stage.width, Laya.stage.height, "rgba(0, 0, 0, 0.2)");
-        this.leaderboardMask.mouseEnabled = true;
-        this.leaderboardMask.mouseThrough = false;
-        this.leaderboardMask.zOrder = 1000;
-        this.leaderboardMask.on(Laya.Event.CLICK, this, this.hideLeaderboard);
-        this.owner.addChild(this.leaderboardMask);
-
-        // 创建排行榜面板
-        this.leaderboardPanel = new Laya.Sprite();
-        this.leaderboardPanel.zOrder = 1001;
-        const panelWidth = 400;
-        const panelHeight = 400;
-        
-        this.drawPanel(this.leaderboardPanel);
-        this.leaderboardPanel.pivot(200, 200);
-        this.leaderboardPanel.pos(Laya.stage.width/2, Laya.stage.height/2);
-        this.owner.addChild(this.leaderboardPanel);
-
-        // 获取玩家数据
-        const currentPlayerData = LeaderboardManager.instance.getCurrentPlayerEntry();
-
-        // 创建标题
-        const title = new Laya.Text();
-        title.text = "最高段位";
-        title.fontSize = 24;
-        title.color = "#333333";
-        title.width = panelWidth;
-        title.align = "center";
-        title.y = 30;
-        this.leaderboardPanel.addChild(title);
-
-        // 创建装饰性分割线
-        this.createDecorativeLine(this.leaderboardPanel, 70);
-
-        // 创建段位信息
-        const rankText = new Laya.Text();
-        rankText.text = `${currentPlayerData.rankName}`;
-        rankText.fontSize = 30;
-        rankText.color = "#333333";
-        rankText.width = panelWidth;
-        rankText.align = "center";
-        rankText.y = 100;
-        this.leaderboardPanel.addChild(rankText);
-
-        // 创建星级图标容器
-        const starsContainer = new Laya.Sprite();
-        starsContainer.y = 140;
-        this.leaderboardPanel.addChild(starsContainer);
-
-        // 根据段位名称选择对应的图标
-        let iconPath = "";
-        let starCount = 0;
-        if (currentPlayerData.rankName.includes("长城")) {
-            iconPath = "resources/greatwall.png";
-            // 长城段位显示实际星级数量
-            starCount = Math.floor((currentPlayerData.score - 66000) / EndlessModeGame.POINTS_PER_RANK) + 1;
-        } else if (currentPlayerData.rankName.includes("青铜")) {
-            iconPath = "resources/moon.png";
-            starCount = Math.min(4, Math.ceil(currentPlayerData.score / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
-        } else if (currentPlayerData.rankName.includes("白银")) {
-            iconPath = "resources/star.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 12000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
-        } else if (currentPlayerData.rankName.includes("黄金")) {
-            iconPath = "resources/sun.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 24000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
-        } else if (currentPlayerData.rankName.includes("钻石")) {
-            iconPath = "resources/diamond.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 36000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
-        } else if (currentPlayerData.rankName.includes("王者")) {
-            iconPath = "resources/king.png";
-            starCount = Math.min(4, Math.ceil((currentPlayerData.score - 48000) / EndlessModeGame.POINTS_PER_RANK) % 4 || 4);
-        }
-
-        // 添加星级图标
-        if (iconPath && starCount > 0) {
-            const totalWidth = starCount * 24 + (starCount - 1) * 4; // 图标宽度24，间距4
-            const startX = (panelWidth - totalWidth) / 2;
-            
-            for (let i = 0; i < starCount; i++) {
-                const star = new Laya.Image();
-                star.skin = iconPath;
-                star.width = 24;
-                star.height = 24;
-                star.x = startX + i * (24 + 4);
-                starsContainer.addChild(star);
-            }
-        }
-
-        // 创建分数信息
-        const scoreText = new Laya.Text();
-        scoreText.text = `最高分数: ${currentPlayerData.score}`;
-        scoreText.fontSize = 20;
-        scoreText.color = "#666666";
-        scoreText.width = panelWidth;
-        scoreText.align = "center";
-        scoreText.y = 180;
-        this.leaderboardPanel.addChild(scoreText);
-
-        // 创建全国排名信息
-        const nationalRankText = new Laya.Text();
-        nationalRankText.text = `全国排名: ${currentPlayerData.rank}`;
-        nationalRankText.fontSize = 20;
-        nationalRankText.color = "#666666";
-        nationalRankText.width = panelWidth;
-        nationalRankText.align = "center";
-        nationalRankText.y = 220;
-        this.leaderboardPanel.addChild(nationalRankText);
-
-        // 创建超越玩家百分比信息
-        const percentileText = new Laya.Text();
-        percentileText.text = `超越了${currentPlayerData.percentile}%的玩家`;
-        percentileText.fontSize = 20;
-        percentileText.color = "#4CAF50";
-        percentileText.width = panelWidth;
-        percentileText.align = "center";
-        percentileText.y = 260;
-        this.leaderboardPanel.addChild(percentileText);
-
-        // 添加入场动画
-        this.leaderboardPanel.alpha = 0;
-        this.leaderboardPanel.scale(0.8, 0.8);
-        Laya.Tween.to(this.leaderboardPanel, {
-            alpha: 1,
-            scaleX: 1,
-            scaleY: 1
-        }, 300, Laya.Ease.backOut);
-
-        // 两秒后自动关闭
-        Laya.timer.once(2000, this, this.hideLeaderboard);
     }
 
     private hideLeaderboard(): void {
@@ -1828,7 +1485,7 @@ export class EndlessModeGame extends Laya.Script {
         homeIcon.height = 32;
         // 设置图标的轴心点为中心
         homeIcon.pivot(16, 0);
-        homeIcon.alpha = 0.5;
+        homeIcon.alpha = 0.9;
         btnContainer.addChild(homeIcon);
         
         // 使用与开火按钮相同的水平位置
@@ -1926,5 +1583,27 @@ export class EndlessModeGame extends Laya.Script {
         this.metalBoxCount = 0;
         this.treasureBoxCount = 0;
         this.lastRankIndex = -1;
+    }
+
+    // 6. 修改 onDestroy 方法，确保完全清理
+    onDestroy(): void {
+        // 销毁游戏
+        this.destroyGame();
+        
+        // 清理所有计时器和动画
+        Laya.timer.clearAll(this);
+        Laya.Tween.clearAll(this);
+        
+        // 清理引用
+        this.gameBox = null;
+        this.tank = null;
+        this.joystick = null;
+        this.fireBtn = null;
+        this.bullets = [];
+        this.boxes = [];
+        this.enemyTanks = [];
+        this.pilotBar = null;
+        this.pilotCountText = null;
+        this.invincibleEffect = null;
     }
 } 

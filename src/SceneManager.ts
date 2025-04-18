@@ -2,6 +2,7 @@ const { regClass, property } = Laya;
 import { HomePage } from "./HomePage";
 import { EndlessModeGame } from "./EndlessModeGame";
 import { RescueModeGame } from "./RescueModeGame";
+import { ResourceManager } from "./ResourceManager";
 
 /**
  * 场景管理器 - 管理游戏中所有场景的切换
@@ -73,6 +74,9 @@ export class SceneManager extends Laya.Script {
                     console.log("Clearing ExplosionManager timers");
                     Laya.timer.clearAll(explosionManagerInstance);
                 }
+
+                // 清理所有资源
+                ResourceManager.instance.clearAll();
                 
                 // 延迟一帧再销毁场景，确保其他清理操作完成
                 console.log("Scheduling scene destruction for next frame");
@@ -112,24 +116,32 @@ export class SceneManager extends Laya.Script {
             this.currentScene.name = sceneName;
             Laya.stage.addChild(this.currentScene);
             
-            // 根据场景名称加载对应组件
-            let component = null;
-            switch (sceneName) {
-                case "HomePage":
-                    console.log("Adding HomePage component");
-                    component = this.currentScene.addComponent(HomePage);
-                    break;
-                case "EndlessModeGame":
-                    console.log("Adding EndlessModeGame component");
-                    component = this.currentScene.addComponent(EndlessModeGame);
-                    break;
-                case "RescueModeGame":
-                    console.log("Adding RescueModeGame component");
-                    component = this.currentScene.addComponent(RescueModeGame);
-                    break;
-            }
-            
-            console.log(`Scene "${sceneName}" created with component: ${component ? component.constructor.name : 'none'}`);
+            // 预加载场景所需资源
+            ResourceManager.instance.preloadAll(
+                (progress) => {
+                    console.log(`Loading resources: ${progress}%`);
+                },
+                () => {
+                    // 资源加载完成后，添加场景组件
+                    let component = null;
+                    switch (sceneName) {
+                        case "HomePage":
+                            console.log("Adding HomePage component");
+                            component = this.currentScene.addComponent(HomePage);
+                            break;
+                        case "EndlessModeGame":
+                            console.log("Adding EndlessModeGame component");
+                            component = this.currentScene.addComponent(EndlessModeGame);
+                            break;
+                        case "RescueModeGame":
+                            console.log("Adding RescueModeGame component");
+                            component = this.currentScene.addComponent(RescueModeGame);
+                            break;
+                    }
+                    
+                    console.log(`Scene "${sceneName}" created with component: ${component ? component.constructor.name : 'none'}`);
+                }
+            );
         } catch (e) {
             console.error("场景创建出错:", e);
         }

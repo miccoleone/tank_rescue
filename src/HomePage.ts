@@ -4,6 +4,7 @@ import { LeaderboardManager, LeaderboardEntry } from "./LeaderboardManager";
 import { RankConfig } from "./RankConfig";
 import { PopupPanel } from "./PopupPanel";
 import { Achievement, MilitaryRank } from "./Achievement";
+import { TutorialManager } from "./TutorialManager";
 
 /**
  * 游戏首页
@@ -63,6 +64,8 @@ export class HomePage extends Laya.Script {
         ], Laya.Handler.create(this, () => {
             // 初始化UI
             this.initUI();
+            // 显示欢迎提示（移到资源加载完成后）
+            TutorialManager.instance.showWelcomeTip(this.owner as Laya.Sprite);
         }));
 
         // 确保场景尺寸正确

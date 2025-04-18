@@ -5,11 +5,11 @@ import { Achievement } from "./Achievement";
 @regClass()
 export class Pilot extends Laya.Sprite {
     private static readonly PILOT_IMAGES = [
-        "resources/man1.png",
-        "resources/man2.png",
-        "resources/man3.png",
-        "resources/man4.png",
-        "resources/man5.png"
+        "resources/savemode/man1.png",
+        "resources/savemode/man2.png",
+        "resources/savemode/man3.png",
+        "resources/savemode/man4.png",
+        "resources/savemode/man5.png"
     ];
 
     private pilotImage: Laya.Image;

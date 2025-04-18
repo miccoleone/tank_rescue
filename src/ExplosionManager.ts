@@ -78,7 +78,6 @@ export class ExplosionManager {
         try {
             // 播放爆炸音效
             this.boomSound = Laya.SoundManager.playSound("resources/explosion.mp3", 1);
-            this.boomSound.volume = 1;
 
             // 创建动画容器
             const container = new Laya.Sprite();

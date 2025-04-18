@@ -26,92 +26,81 @@ export class ResourceManager extends Laya.Script {
     }
 
     /**
-     * 预加载资源
-     * @param resources 资源路径数组
-     * @param onComplete 加载完成的回调函数
+     * 预加载所有游戏资源
+     * @param onProgress 加载进度回调
+     * @param onComplete 加载完成回调
      */
-    public preloadResources(resources: string[], onComplete?: Laya.Handler): void {
-        // 过滤出尚未加载的资源
-        const newResources = resources.filter(res => !this.loadedResources.has(res));
+    public preloadAll(onProgress?: (progress: number) => void, onComplete?: () => void): void {
+        const resources = [
+            // 玩家相关
+            { url: "resources/player_log.png", type: Laya.Loader.IMAGE },
+            { url: "resources/tank.png", type: Laya.Loader.IMAGE },
+            { url: "resources/bullet.png", type: Laya.Loader.IMAGE },
+            
+            // 箱子相关
+            { url: "resources/woodBox.png", type: Laya.Loader.IMAGE },
+            { url: "resources/metalBox.png", type: Laya.Loader.IMAGE },
+            { url: "resources/explosion.png", type: Laya.Loader.IMAGE },
+            
+            // 音效
+            { url: "resources/fire.mp3", type: Laya.Loader.SOUND },
+            { url: "resources/background.mp3", type: Laya.Loader.SOUND },
+            { url: "resources/score.mp3", type: Laya.Loader.SOUND },
+            { url: "resources/click.mp3", type: Laya.Loader.SOUND },
+            
+            // 敌人
+            { url: "resources/enemy-tank.png", type: Laya.Loader.IMAGE },
+            
+            // 段位图标
+            { url: "resources/moon.png", type: Laya.Loader.IMAGE },
+            { url: "resources/star.png", type: Laya.Loader.IMAGE },
+            { url: "resources/sun.png", type: Laya.Loader.IMAGE },
+            { url: "resources/diamond.png", type: Laya.Loader.IMAGE },
+            { url: "resources/king.png", type: Laya.Loader.IMAGE },
+            { url: "resources/greatwall.png", type: Laya.Loader.IMAGE },
+            
+            // UI图标
+            { url: "resources/闪电.png", type: Laya.Loader.IMAGE },
+            { url: "resources/circle_60_red.png", type: Laya.Loader.IMAGE },
+            { url: "resources/circle_60.png", type: Laya.Loader.IMAGE },
+            { url: "resources/home.png", type: Laya.Loader.IMAGE }
+        ];
         
-        if (newResources.length === 0) {
-            // 如果没有新资源需要加载，直接调用完成回调
-            if (onComplete) onComplete.run();
-            return;
-        }
-
-        // 加载资源
-        console.log("开始加载资源:", newResources);
-        Laya.loader.load(newResources, Laya.Handler.create(this, () => {
-            // 记录已加载的资源
-            newResources.forEach(res => this.loadedResources.add(res));
-            console.log("资源加载完成:", newResources);
-            // 调用加载完成的回调函数
-            if (onComplete) onComplete.run();
-        }));
+        Laya.loader.load(
+            resources,
+            Laya.Handler.create(this, () => {
+                console.log("All resources loaded");
+                resources.forEach(res => this.loadedResources.add(res.url));
+                onComplete?.();
+            }),
+            Laya.Handler.create(this, (progress: number) => {
+                console.log(`Loading progress: ${progress}`);
+                onProgress?.(progress);
+            })
+        );
     }
 
     /**
-     * 生成简单的图像资源(用于测试)
-     * @param width 图像宽度
-     * @param height 图像高度
-     * @param backgroundColor 背景颜色
-     * @param text 显示的文本
-     * @param textColor 文本颜色
-     * @returns HTMLCanvasElement Canvas元素
+     * 清理所有资源
      */
-    public static generateImage(width: number, height: number, backgroundColor: string, text: string, textColor: string = "#FFFFFF"): HTMLCanvasElement {
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
+    public clearAll(): void {
+        console.log("Clearing all resources");
         
-        // 绘制背景
-        ctx.fillStyle = backgroundColor;
-        ctx.fillRect(0, 0, width, height);
+        // 停止所有音效
+        // Laya.SoundManager.stopAll();
         
-        // 绘制文本
-        ctx.fillStyle = textColor;
-        ctx.font = '20px Arial';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(text, width / 2, height / 2);
+        // 清理所有计时器
+        Laya.timer.clearAll(this);
         
-        return canvas;
-    }
-
-    /**
-     * 生成并保存测试资源
-     * 此方法仅用于开发阶段，快速创建测试资源
-     */
-    public static generateTestResources(): void {
-        console.log("生成测试资源...");
+        // 清理所有已加载的资源
+        this.loadedResources.forEach(url => {
+            Laya.loader.clearRes(url);
+        });
+        this.loadedResources.clear();
         
-        // 生成主页背景图
-        const homeBackground = this.generateImage(800, 600, "#1E1E1E", "主页背景");
-        const homeBackgroundURL = homeBackground.toDataURL();
-        Laya.loader.cacheRes("resources/home_bg.jpg", homeBackgroundURL);
+        // 清理纹理缓存
+        Laya.Resource.destroyUnusedResources();
         
-        // 生成无尽模式图标
-        const endlessModeIcon = this.generateImage(280, 120, "#4CAF50", "无尽模式");
-        const endlessModeIconURL = endlessModeIcon.toDataURL();
-        Laya.loader.cacheRes("resources/endless_mode.png", endlessModeIconURL);
-        
-        // 生成救援模式图标
-        const saveModeIcon = this.generateImage(280, 120, "#2196F3", "救援模式");
-        const saveModeIconURL = saveModeIcon.toDataURL();
-        Laya.loader.cacheRes("resources/save_mode.jpg", saveModeIconURL);
-        
-        // 生成玩家头像
-        const playerAvatar = this.generateImage(40, 40, "#9C27B0", "我");
-        const playerAvatarURL = playerAvatar.toDataURL();
-        Laya.loader.cacheRes("resources/player_log.png", playerAvatarURL);
-        
-        // 生成排行榜图标
-        const rankIcon = this.generateImage(48, 48, "#FF9800", "排行");
-        const rankIconURL = rankIcon.toDataURL();
-        Laya.loader.cacheRes("resources/rank_icon.png", rankIconURL);
-        
-        console.log("测试资源生成完成");
+        console.log("All resources cleared");
     }
 } 
