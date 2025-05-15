@@ -87,8 +87,6 @@ export class EndlessModeGame extends Laya.Script {
     private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
     private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
     
-    private backgroundTiles: Laya.Sprite[] = [];
-    
     constructor() {
         super();
         // 预加载音效和图片
@@ -172,32 +170,33 @@ export class EndlessModeGame extends Laya.Script {
         this.gameBox.name = "GameBox";
         this.owner.addChild(this.gameBox);
 
-        // 创建游戏地图背景
-        this.createGameBackground();
-    }
-
-    private createGameBackground(): void {
-        const tileSize = 128; // 地图瓦片大小
-        const numTilesX = Math.ceil(Laya.stage.width / tileSize) + 1;
-        const numTilesY = Math.ceil(Laya.stage.height / tileSize) + 1;
-
-        // 清除现有的背景瓦片
-        this.backgroundTiles.forEach(tile => tile.destroy());
-        this.backgroundTiles = [];
-
-        // 创建地图瓦片
-        for (let i = 0; i < numTilesX; i++) {
-            for (let j = 0; j < numTilesY; j++) {
-                const tile = new Laya.Sprite();
-                tile.loadImage("resources/Retina/tileGrass1.png");
-                tile.width = tileSize;
-                tile.height = tileSize;
-                tile.x = i * tileSize;
-                tile.y = j * tileSize;
-                this.gameBox.addChildAt(tile, 0); // 确保瓦片在最底层
-                this.backgroundTiles.push(tile);
-            }
+        // 创建格子背景
+        const gridBackground = new Laya.Sprite();
+        gridBackground.name = "GridBackground";
+        
+        // 首先确保背景是白色的
+        const width = Laya.stage.width;
+        const height = Laya.stage.height;
+        gridBackground.graphics.drawRect(0, 0, width, height, "#ffffff");
+        
+        // 绘制格子
+        const gridSize = EndlessModeGame.GRID_SIZE; // 使用已定义的格子大小
+        
+        // 使用浅灰色绘制格子线
+        const gridGraphics = gridBackground.graphics;
+        
+        // 绘制垂直线
+        for (let x = 0; x <= width; x += gridSize) {
+            gridGraphics.drawLine(x, 0, x, height, "#e0e0e0", 1);
         }
+        
+        // 绘制水平线
+        for (let y = 0; y <= height; y += gridSize) {
+            gridGraphics.drawLine(0, y, width, y, "#e0e0e0", 1);
+        }
+        
+        // 将格子背景添加到游戏容器中，确保它在最底层
+        this.gameBox.addChildAt(gridBackground, 0);
     }
 
     private initPlayerTank(): void {
@@ -207,7 +206,7 @@ export class EndlessModeGame extends Laya.Script {
         
         // 使用tank.png作为坦克图片
         let tankImage = new Laya.Image();
-        tankImage.skin = "resources/Retina/tank1_red.png";
+        tankImage.skin = "resources/Retina/tank_red.png";
         tankImage.width = 30;
         tankImage.height = 30;
         tankImage.pivot(15, 15);
