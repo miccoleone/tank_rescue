@@ -31,6 +31,26 @@ export class RescueModeGame extends Laya.Script {
     private static readonly PILOT_RESCUE_SCORE = 1000; // 救援驾驶员的得分
     private static readonly INVINCIBLE_DURATION = 5000; // 无敌时间5秒
     
+    // 坦克皮肤系统配置
+    private static readonly TANK_SKINS = [
+        { requiredPilots: 0, body: "resources/Retina/tank1_red.png" },
+        { requiredPilots: 10, body: "resources/Retina/tank1_blue.png" },
+        { requiredPilots: 20, body: "resources/Retina/tank1_dark.png" },
+        { requiredPilots: 30, body: "resources/Retina/tank1_sand.png" },
+        { requiredPilots: 40, body: "resources/Retina/tank2_red.png" },
+        { requiredPilots: 50, body: "resources/Retina/tank2_blue.png" },
+        { requiredPilots: 60, body: "resources/Retina/tank2_dark.png" },
+        { requiredPilots: 70, body: "resources/Retina/tank2_sand.png" },
+        { requiredPilots: 80, body: "resources/Retina/tank3_red1.png" },
+        { requiredPilots: 90, body: "resources/Retina/tank3_red2.png" },
+        { requiredPilots: 100, body: "resources/Retina/tank3_blue1.png" },
+        { requiredPilots: 110, body: "resources/Retina/tank3_blue2.png" },
+        { requiredPilots: 120, body: "resources/Retina/tank4_1.png" },
+        { requiredPilots: 130, body: "resources/Retina/tank4_2.png" },
+        { requiredPilots: 140, body: "resources/Retina/tank4_3.png" },
+        { requiredPilots: 150, body: "resources/Retina/tank4_4.png" }
+    ];
+    
     // 段位系统定义
     private static readonly RANKS: RankLevel[] = [
         { name: "青铜", icon: "resources/moon.png", count: 4 },
@@ -84,6 +104,11 @@ export class RescueModeGame extends Laya.Script {
     private isInvincible: boolean = false;
     private invincibleTimer: number = 0;
     private homeBtn: Laya.Sprite;
+    // 新增：坦克皮肤相关属性
+    private currentTankSkin: number = 0;
+    private tankBody: Laya.Image;
+    private upgradeTankEffect: Laya.Sprite | null = null;
+    private backgroundTiles: Laya.Sprite[] = [];
     // 开火按钮透明度常量
     private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
     private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
@@ -114,7 +139,32 @@ export class RescueModeGame extends Laya.Script {
             "resources/闪电.png",
             "resources/circle_60_red.png",
             "resources/home.png",
-            "resources/circle_60.png"
+            "resources/circle_60.png",
+            // 加载坦克皮肤和背景资源
+            "resources/Retina/tank1_blue.png",
+            "resources/Retina/tank1_red.png",
+            "resources/Retina/tank2_blue.png",
+            "resources/Retina/tank2_red.png",
+            "resources/Retina/tank3_red1.png",
+            "resources/Retina/tank3_red2.png",
+            "resources/Retina/tank4_1.png",
+            // 地形图片
+            "resources/Retina/tileGrass1.png",
+            "resources/Retina/tileGrass2.png",
+            "resources/Retina/tileSand1.png",
+            "resources/Retina/tileSand2.png",
+            "resources/Retina/tileGrass_roadEast.png",
+            "resources/Retina/tileGrass_roadNorth.png",
+            "resources/Retina/tileGrass_roadCornerLL.png",
+            "resources/Retina/tileGrass_roadCornerLR.png",
+            "resources/Retina/tileGrass_roadCornerUL.png",
+            "resources/Retina/tileGrass_roadCornerUR.png",
+            "resources/Retina/tileGrass_roadCrossing.png",
+            "resources/Retina/tileGrass_roadCrossingRound.png",
+            "resources/Retina/treeGreen_large.png",
+            "resources/Retina/treeBrown_large.png",
+            "resources/Retina/treeGreen_small.png",
+            "resources/Retina/treeBrown_small.png"
         ], Laya.Handler.create(this, () => {
             // 确保爆炸管理器初始化
             ExplosionManager.instance;
@@ -171,41 +221,157 @@ export class RescueModeGame extends Laya.Script {
     }
 
     private initGameScene(): void {
-        // 强制设置背景颜色为白色 - 这应该会覆盖任何默认背景
-        Laya.stage.bgColor = "#ffffff";
-        
         // 创建游戏容器
         this.gameBox = new Laya.Sprite();
         this.gameBox.name = "GameBox";
         this.owner.addChild(this.gameBox);
 
-        // 创建格子背景
-        const gridBackground = new Laya.Sprite();
-        gridBackground.name = "GridBackground";
-        
-        // 首先确保背景是白色的
+        // 创建游戏背景
+        this.createGameBackground();
+    }
+
+    /**
+     * 创建游戏背景，使用Retina目录中的地形图片
+     */
+    private createGameBackground(): void {
+        // 获取舞台宽高
         const width = Laya.stage.width;
         const height = Laya.stage.height;
-        gridBackground.graphics.drawRect(0, 0, width, height, "#ffffff");
         
-        // 绘制格子
-        const gridSize = RescueModeGame.GRID_SIZE; // 使用已定义的格子大小
+        // 创建背景容器
+        const backgroundContainer = new Laya.Sprite();
+        backgroundContainer.name = "BackgroundContainer";
+        this.gameBox.addChildAt(backgroundContainer, 0);
         
-        // 使用浅灰色绘制格子线
-        const gridGraphics = gridBackground.graphics;
+        // 设置地形图片尺寸
+        const tileSize = 64; // 每个地形图片的尺寸
         
-        // 绘制垂直线
-        for (let x = 0; x <= width; x += gridSize) {
-            gridGraphics.drawLine(x, 0, x, height, "#e0e0e0", 1);
+        // 计算需要的图片数量
+        const tilesX = Math.ceil(width / tileSize) + 1; // 多一列用于视差滚动
+        const tilesY = Math.ceil(height / tileSize) + 1; // 多一行用于视差滚动
+        
+        // 可用的地形图片
+        const grassTiles = [
+            "resources/Retina/tileGrass1.png",
+            "resources/Retina/tileGrass2.png"
+        ];
+        
+        const roadTiles = [
+            "resources/Retina/tileGrass_roadEast.png",
+            "resources/Retina/tileGrass_roadNorth.png",
+            "resources/Retina/tileGrass_roadCornerLL.png",
+            "resources/Retina/tileGrass_roadCornerLR.png",
+            "resources/Retina/tileGrass_roadCornerUL.png",
+            "resources/Retina/tileGrass_roadCornerUR.png"
+        ];
+        
+        const specialTiles = [
+            "resources/Retina/tileGrass_roadCrossing.png",
+            "resources/Retina/tileGrass_roadCrossingRound.png"
+        ];
+        
+        const trees = [
+            "resources/Retina/treeGreen_large.png",
+            "resources/Retina/treeBrown_large.png",
+            "resources/Retina/treeGreen_small.png",
+            "resources/Retina/treeBrown_small.png"
+        ];
+        
+        // 地图设计：创建主要道路
+        // 首先铺设基础草地
+        for (let y = 0; y < tilesY; y++) {
+            for (let x = 0; x < tilesX; x++) {
+                const tile = new Laya.Sprite();
+                const img = new Laya.Image();
+                
+                // 基础草地随机选择
+                img.skin = grassTiles[Math.floor(Math.random() * grassTiles.length)];
+                img.width = tileSize;
+                img.height = tileSize;
+                tile.addChild(img);
+                tile.pos(x * tileSize, y * tileSize);
+                
+                this.backgroundTiles.push(tile);
+                backgroundContainer.addChild(tile);
+            }
         }
         
-        // 绘制水平线
-        for (let y = 0; y <= height; y += gridSize) {
-            gridGraphics.drawLine(0, y, width, y, "#e0e0e0", 1);
+        // 添加道路 - 水平主干道
+        const mainRoadY = Math.floor(tilesY / 2);
+        for (let x = 0; x < tilesX; x++) {
+            // 找到对应的grass tile并替换成road
+            const index = mainRoadY * tilesX + x;
+            if (index < this.backgroundTiles.length) {
+                const roadTile = this.backgroundTiles[index];
+                roadTile.removeChildren();
+                
+                const img = new Laya.Image();
+                img.skin = "resources/Retina/tileGrass_roadEast.png";
+                img.width = tileSize;
+                img.height = tileSize;
+                roadTile.addChild(img);
+            }
         }
         
-        // 将格子背景添加到游戏容器中，确保它在最底层
-        this.gameBox.addChildAt(gridBackground, 0);
+        // 添加垂直道路
+        const crossroads = [
+            Math.floor(tilesX * 0.25),
+            Math.floor(tilesX * 0.75)
+        ];
+        
+        for (const crossX of crossroads) {
+            // 绘制垂直道路
+            for (let y = 0; y < tilesY; y++) {
+                const index = y * tilesX + crossX;
+                if (index < this.backgroundTiles.length) {
+                    const roadTile = this.backgroundTiles[index];
+                    roadTile.removeChildren();
+                    
+                    const img = new Laya.Image();
+                    // 在十字路口使用特殊的十字路口瓦片
+                    if (y === mainRoadY) {
+                        img.skin = specialTiles[Math.floor(Math.random() * specialTiles.length)];
+                    } else {
+                        img.skin = "resources/Retina/tileGrass_roadNorth.png";
+                    }
+                    img.width = tileSize;
+                    img.height = tileSize;
+                    roadTile.addChild(img);
+                }
+            }
+        }
+        
+        // 添加装饰 - 随机树木
+        const treeCount = Math.floor((tilesX * tilesY) * 0.05); // 地图5%的位置有树
+        for (let i = 0; i < treeCount; i++) {
+            // 随机位置，但避免道路
+            let x, y;
+            let isOnRoad = true;
+            
+            while (isOnRoad) {
+                x = Math.floor(Math.random() * tilesX);
+                y = Math.floor(Math.random() * tilesY);
+                
+                // 检查是否在道路上
+                isOnRoad = y === mainRoadY || crossroads.indexOf(x) !== -1; // 使用indexOf代替includes
+                
+                // 如果不在道路上，添加树木
+                if (!isOnRoad) {
+                    const treeImg = new Laya.Image();
+                    treeImg.skin = trees[Math.floor(Math.random() * trees.length)];
+                    treeImg.width = tileSize * 0.8;
+                    treeImg.height = tileSize * 0.8;
+                    
+                    // 随机放置在瓦片内的某个位置
+                    const offsetX = (Math.random() * 0.2) * tileSize;
+                    const offsetY = (Math.random() * 0.2) * tileSize;
+                    
+                    treeImg.pos(x * tileSize + offsetX, y * tileSize + offsetY);
+                    treeImg.zOrder = y * tilesX + x + 1000; // 确保树木显示在地形上方
+                    backgroundContainer.addChild(treeImg);
+                }
+            }
+        }
     }
 
     private initPlayerTank(): void {
@@ -213,14 +379,15 @@ export class RescueModeGame extends Laya.Script {
         this.tank = new Laya.Sprite();
         this.tank.name = "PlayerTank";
         
-        // 使用tank.png作为坦克图片
-        let tankImage = new Laya.Image();
-        tankImage.skin = "resources/Retina/tank_red.png";
-        tankImage.width = 30;
-        tankImage.height = 30;
-        tankImage.pivot(15, 15);
-        tankImage.rotation = -90;
-        this.tank.addChild(tankImage);
+        // 创建坦克身体
+        this.tankBody = new Laya.Image();
+        const currentSkin = RescueModeGame.TANK_SKINS[0]; // 初始皮肤
+        this.tankBody.skin = currentSkin.body;
+        this.tankBody.width = 30;  
+        this.tankBody.height = 30; 
+        this.tankBody.pivot(15, 15); 
+        this.tankBody.rotation = -90;
+        this.tank.addChild(this.tankBody);
         
         // 将坦克放置在屏幕中央
         this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
@@ -641,14 +808,14 @@ export class RescueModeGame extends Laya.Script {
         
         // 检查段位变化
         if (this.lastRankIndex !== -1) {
-            const newRankIndex = RescueModeGame.RANKS.findIndex(r => r.name === rankInfo.rankName);
+            const newRankIndex = RescueModeGame.RANKS.findIndex((r: RankLevel) => r.name === rankInfo.rankName);
             
             if (newRankIndex !== -1 && newRankIndex !== this.lastRankIndex) {
                 this.lastRankIndex = newRankIndex;
                 // 不在这里调用checkRankUp，避免递归
             }
         } else {
-            this.lastRankIndex = RescueModeGame.RANKS.findIndex(r => r.name === rankInfo.rankName);
+            this.lastRankIndex = RescueModeGame.RANKS.findIndex((r: RankLevel) => r.name === rankInfo.rankName);
         }
     }
 
@@ -706,6 +873,7 @@ export class RescueModeGame extends Laya.Script {
             icon.width = 30;
             icon.height = 30;
             icon.x = index * (30 + 2);
+            icon.y = 2;
             iconContainer.addChild(icon);
         });
         
@@ -1438,6 +1606,195 @@ export class RescueModeGame extends Laya.Script {
         // 更新数量文本位置和内容
         this.pilotCountText.x = barWidth + 5;  // 血条后留5像素间距
         this.pilotCountText.text = `X${this.rescuedPilots}`;
+        
+        // 检查是否需要升级坦克皮肤
+        this.checkTankSkinUpgrade();
+    }
+    
+    /**
+     * 检查并升级坦克皮肤
+     */
+    private checkTankSkinUpgrade(): void {
+        // 遍历坦克皮肤配置，找到当前应该使用的皮肤
+        let targetSkinIndex = 0;
+        
+        for (let i = 0; i < RescueModeGame.TANK_SKINS.length; i++) {
+            if (this.rescuedPilots >= RescueModeGame.TANK_SKINS[i].requiredPilots) {
+                targetSkinIndex = i;
+            } else {
+                break;
+            }
+        }
+        
+        // 如果皮肤需要升级
+        if (targetSkinIndex !== this.currentTankSkin) {
+            const oldSkinIndex = this.currentTankSkin;
+            this.currentTankSkin = targetSkinIndex;
+            
+            // 应用新皮肤
+            const newSkin = RescueModeGame.TANK_SKINS[targetSkinIndex];
+            
+            // 播放升级特效
+            this.playTankUpgradeEffect(() => {
+                // 特效完成后更新坦克外观
+                this.tankBody.skin = newSkin.body;
+                
+                // 根据升级程度适当调整大小，更高级的坦克略大一些
+                // this.tankBody.width = 40 * sizeScale;
+                // this.tankBody.height = 40 * sizeScale;
+                // this.tankBody.pivot(20 * sizeScale, 20 * sizeScale);
+                
+                // 显示升级提示
+                const nextRequirement = targetSkinIndex < RescueModeGame.TANK_SKINS.length - 1 ? 
+                    RescueModeGame.TANK_SKINS[targetSkinIndex + 1].requiredPilots : null;
+                
+                this.showTankUpgradeMessage(targetSkinIndex, nextRequirement);
+            });
+        }
+    }
+    
+    /**
+     * 播放坦克升级特效
+     */
+    private playTankUpgradeEffect(onComplete: Function): void {
+        // 移除现有特效
+        if (this.upgradeTankEffect) {
+            this.upgradeTankEffect.destroy();
+        }
+        
+        // 创建特效容器
+        this.upgradeTankEffect = new Laya.Sprite();
+        this.gameBox.addChild(this.upgradeTankEffect);
+        this.upgradeTankEffect.pos(this.tank.x, this.tank.y);
+        this.upgradeTankEffect.zOrder = 1000; // 确保显示在最上层
+        
+        // 创建环形特效
+        const ringCount = 3;
+        const rings: Laya.Sprite[] = [];
+        
+        for (let i = 0; i < ringCount; i++) {
+            const ring = new Laya.Sprite();
+            ring.graphics.drawCircle(0, 0, 20, null, "#FFD700", 2);
+            ring.alpha = 0.8;
+            ring.scale(0, 0);
+            this.upgradeTankEffect.addChild(ring);
+            rings.push(ring);
+        }
+        
+        // 创建亮光效果
+        const glow = new Laya.Sprite();
+        glow.graphics.drawCircle(0, 0, 30, "#FFFF00", null);
+        glow.alpha = 0.5;
+        glow.scale(0, 0);
+        this.upgradeTankEffect.addChild(glow);
+        
+        // 播放升级音效
+        Laya.SoundManager.playSound("resources/score.mp3", 1);
+        
+        // 播放环形动画
+        let completed = 0;
+        
+        // 光晕扩散动画
+        Laya.Tween.to(glow, {
+            scaleX: 2.5,
+            scaleY: 2.5,
+            alpha: 0
+        }, 800, Laya.Ease.cubicOut);
+        
+        // 环形动画
+        for (let i = 0; i < ringCount; i++) {
+            Laya.timer.once(i * 150, this, () => {
+                Laya.Tween.to(rings[i], {
+                    scaleX: 2.5,
+                    scaleY: 2.5,
+                    alpha: 0
+                }, 800, Laya.Ease.cubicOut, Laya.Handler.create(this, () => {
+                    completed++;
+                    if (completed === ringCount) {
+                        // 所有环动画完成
+                        this.upgradeTankEffect.destroy();
+                        this.upgradeTankEffect = null;
+                        
+                        // 执行完成回调
+                        if (onComplete) onComplete();
+                    }
+                }));
+            });
+        }
+        
+        // 坦克上下跳动动画
+        const originalY = this.tank.y;
+        Laya.Tween.to(this.tank, { y: originalY - 15 }, 150, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
+            Laya.Tween.to(this.tank, { y: originalY }, 150, Laya.Ease.quadIn);
+        }));
+    }
+    
+    /**
+     * 显示坦克升级消息
+     */
+    private showTankUpgradeMessage(skinLevel: number, nextRequirement: number | null): void {
+        // 创建消息容器
+        const messageContainer = new Laya.Sprite();
+        messageContainer.zOrder = 2000;
+        messageContainer.alpha = 0;
+        this.gameBox.addChild(messageContainer);
+        
+        // 坦克升级等级名称
+        const levelNames = [
+            "标准型", "进阶型", "强化型", "高级型", "精英型", "超级战车"
+        ];
+        
+        // 创建消息背景
+        const bg = new Laya.Sprite();
+        bg.graphics.drawRect(0, 0, 300, 80, "rgba(0,0,0,0.6)");
+        bg.graphics.drawRect(0, 0, 300, 80, null, "#FFD700", 2);
+        messageContainer.addChild(bg);
+        
+        // 创建标题
+        const title = new Laya.Text();
+        title.text = "坦克升级！";
+        title.fontSize = 22;
+        title.color = "#FFD700";
+        title.width = 280;
+        title.height = 30;
+        title.align = "center";
+        title.pos(10, 10);
+        messageContainer.addChild(title);
+        
+        // 创建描述
+        const desc = new Laya.Text();
+        desc.text = `已获得 ${levelNames[skinLevel]} 坦克`;
+        if (nextRequirement !== null) {
+            desc.text += `\n再救援${nextRequirement - this.rescuedPilots}名驾驶员可获得下一级坦克`;
+        }
+        desc.fontSize = 16;
+        desc.color = "#FFFFFF";
+        desc.width = 280;
+        desc.height = 40;
+        desc.align = "center";
+        desc.pos(10, 40);
+        messageContainer.addChild(desc);
+        
+        // 设置位置和动画
+        messageContainer.pivot(150, 40);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100);
+        
+        // 显示动画
+        Laya.Tween.to(messageContainer, {
+            alpha: 1,
+            scaleX: 1.1,
+            scaleY: 1.1
+        }, 300, Laya.Ease.backOut, Laya.Handler.create(this, () => {
+            // 3秒后隐藏
+            Laya.timer.once(3000, this, () => {
+                Laya.Tween.to(messageContainer, {
+                    alpha: 0,
+                    y: messageContainer.y - 50
+                }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
+                    messageContainer.destroy();
+                }));
+            });
+        }));
     }
 
     private createInvincibleEffect(): void {
@@ -1461,8 +1818,8 @@ export class RescueModeGame extends Laya.Script {
         const glowRadius = radius + 5;
         gradient.graphics.drawCircle(0, 0, glowRadius, null, "#00ff0011");
     
-        // 添加阴影效果
-        const shadowFilter = new Laya.GlowFilter("#00ff00", 10, 7, 7, 2); // 绿色阴影，模糊度为10，偏移量为7
+        // 添加阴影效果，修正参数数量
+        const shadowFilter = new Laya.GlowFilter("#00ff00", 10, 7, 7);
         gradient.filters = [shadowFilter];
     
         this.invincibleEffect.addChild(gradient);
