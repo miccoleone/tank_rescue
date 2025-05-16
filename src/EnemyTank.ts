@@ -9,6 +9,8 @@ export class EnemyTank extends Laya.Sprite {
     private static readonly BOX_RADIUS = 16; // 箱子半径
     private static readonly MIN_DISTANCE = EnemyTank.TANK_RADIUS + EnemyTank.BOX_RADIUS;
     
+    private static isGameActive: boolean = true; // 新增：游戏是否激活的标志
+
     private isChasing: boolean;
     private targetTank: Laya.Sprite;
     private lastMoveTime: number = 0;
@@ -52,8 +54,9 @@ export class EnemyTank extends Laya.Sprite {
     }
     
     private onUpdate(): void {
-        if (this.destroyed) return;
-        
+        // 如果游戏未激活，不执行更新（只在无尽模式中检查）
+        if (!EnemyTank.isGameActive && this.parent?.parent?.name === "EndlessModeGame") return;
+
         if (this.isChasing) {
             this.updateChaseMovement();
         } else {
@@ -130,5 +133,13 @@ export class EnemyTank extends Laya.Sprite {
     public destroy(): void {
         Laya.timer.clearAll(this);
         super.destroy();
+    }
+
+    /**
+     * 设置游戏状态
+     * @param active 是否激活
+     */
+    public static setGameActive(active: boolean): void {
+        EnemyTank.isGameActive = active;
     }
 } 

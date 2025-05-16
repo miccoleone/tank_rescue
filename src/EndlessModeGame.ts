@@ -12,6 +12,15 @@ import { TutorialManager } from "./TutorialManager";
 import { FireButton } from "./FireButton";
 import { ScoreUtil } from "./ScoreUtil";
 
+// 添加微信小游戏API的类型声明
+declare const wx: {
+    createRewardedVideoAd: (options: { adUnitId: string }) => {
+        show: () => Promise<any>;
+        load: () => Promise<any>;
+        onClose: (callback: (res?: { isEnded?: boolean }) => void) => void;
+        offClose: () => void;
+    };
+};
 
 // 段位系统配置
 interface RankLevel {
@@ -90,6 +99,11 @@ export class EndlessModeGame extends Laya.Script {
     
     private backgroundTiles: Laya.Sprite[] = [];
     
+    // 添加视频广告实例
+    private videoAd: any;
+    private isPlayerDead: boolean = false;
+    private currentCountdownContainer: Laya.Sprite = null;
+    
     constructor() {
         super();
         // 预加载音效和图片
@@ -162,6 +176,9 @@ export class EndlessModeGame extends Laya.Script {
 
         // 显示无尽模式教程提示
         // TutorialManager.instance.showEndlessModeTip(this.owner as Laya.Sprite, 0, 0, true);
+
+        // 在末尾添加广告初始化
+        this.initRewardedVideoAd();
     }
 
     private initGameScene(): void {
@@ -905,11 +922,12 @@ export class EndlessModeGame extends Laya.Script {
     }
 
     private checkCollisions(): void {
-        if (!this.tank || this.tank.destroyed) return;
-        
+        // 如果玩家已死亡或坦克被销毁，不进行任何碰撞检测
+        if (!this.tank || this.tank.destroyed || this.isPlayerDead) return;
+
         // 检查与敌方坦克的碰撞
         for (const enemy of this.enemyTanks) {
-            if (enemy.destroyed) continue;
+            if (!enemy || enemy.destroyed) continue;
             
             const dx = this.tank.x - enemy.x;
             const dy = this.tank.y - enemy.y;
@@ -919,19 +937,25 @@ export class EndlessModeGame extends Laya.Script {
                 // 如果处于无敌状态，不触发游戏结束
                 if (!this.isInvincible) {
                     this.handleGameOver();
-                    return;
+                    return; // 玩家死亡后立即返回，不再检测其他碰撞
                 }
             }
         }
 
+        // 如果玩家已死亡，不再检测子弹碰撞
+        if (this.isPlayerDead) return;
+
         // 检查子弹碰撞
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             const bullet = this.bullets[i];
+            if (!bullet || bullet.destroyed) continue;
             
             // 检查与敌方坦克的碰撞
             for (let j = this.enemyTanks.length - 1; j >= 0; j--) {
                 const enemy = this.enemyTanks[j];
-                if (this.checkEnemyCollision(bullet, enemy)) {
+                if (!enemy || enemy.destroyed) continue;
+
+                if (this.checkBulletEnemyCollision(bullet, enemy)) {
                     // 播放爆炸效果
                     ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox, true);
                     
@@ -941,16 +965,23 @@ export class EndlessModeGame extends Laya.Script {
                     this.enemyTanks.splice(j, 1);
                     
                     // 增加分数和击杀计数
-                    this.score += 1000;
+                    this.score += EndlessModeGame.ENEMY_TANK_SCORE;
                     this.killCount++;
                     this.updateScoreDisplay();
+                    // 添加得分弹出效果
+                    ScoreUtil.getInstance().createScorePopup(enemy.x, enemy.y, EndlessModeGame.ENEMY_TANK_SCORE, this.gameBox);
                     break;
                 }
             }
             
+            // 如果子弹已被销毁，跳过后续检测
+            if (bullet.destroyed) continue;
+            
             // 检查与箱子的碰撞
-            for (let box of this.boxes) {
-                if (!box.destroyed && this.checkBulletCollision(bullet, box)) {
+            for (const box of this.boxes) {
+                if (!box || box.destroyed) continue;
+
+                if (this.checkBulletCollision(bullet, box)) {
                     const earnedScore = box.hit();
                     if (earnedScore > 0) {
                         this.score += earnedScore;
@@ -960,66 +991,29 @@ export class EndlessModeGame extends Laya.Script {
                         ScoreUtil.getInstance().createScorePopup(box.x, box.y, earnedScore, this.gameBox);
                     }
                     this.recycleBullet(bullet);
-                    return;
+                    break;
                 }
             }
             
             // 检查子弹是否超出屏幕
-            if (bullet.x < 0 || bullet.x > Laya.stage.width || 
-                bullet.y < 0 || bullet.y > Laya.stage.height) {
+            if (!bullet.destroyed && (bullet.x < 0 || bullet.x > Laya.stage.width || 
+                bullet.y < 0 || bullet.y > Laya.stage.height)) {
                 this.recycleBullet(bullet);
-                return;
             }
         }
-
-        // 检查玩家坦克与驾驶员的碰撞
-        if (this.tank && !this.tank.destroyed) {
-            // 获取所有驾驶员
-            const pilots: Pilot[] = [];
-            for (let i = 0; i < this.gameBox.numChildren; i++) {
-                const node = this.gameBox.getChildAt(i);
-                if (node instanceof Pilot) {
-                    pilots.push(node);
-                }
-            }
-
-            for (const pilot of pilots) {
-                // 使用更宽松的碰撞检测（60像素范围 - 光圈大小）
-                const dx = this.tank.x - pilot.x;
-                const dy = this.tank.y - pilot.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-                
-                if (distance < 60) {  // 60像素的救援范围，覆盖光圈区域
-                    // 播放得分音效
-                    Laya.SoundManager.playSound("resources/score.mp3", 1);
-                    
-                    // 增加分数
-                    this.score += EndlessModeGame.PILOT_RESCUE_SCORE;
-                    this.updateScoreDisplay();
-                    
-                    // 增加救援计数并更新显示
-                    this.rescuedPilots++;
-                    this.updatePilotDisplay();
-                    
-                    // 触发救援效果（对象池会自动处理回收）
-                    pilot.rescue();
-                }
-            }
-        }
-    }
-
-    private checkEnemyCollision(bullet: Laya.Sprite, enemy: Laya.Sprite): boolean {
-        const dx = bullet.x - enemy.x;
-        const dy = bullet.y - enemy.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        return distance < 20; // 使用20像素的碰撞范围
     }
 
     private handleGameOver(): void {
+        // 先清理所有UI
+        this.clearAllUI();
+        
         // 禁用开火按钮
         if (this.fireBtn) {
             this.fireBtn.setEnabled(false);
         }
+        
+        // 停止所有敌方坦克的行为
+        EnemyTank.setGameActive(false);
         
         // 添加灰色滤镜效果
         const grayFilter = new Laya.ColorFilter([
@@ -1033,150 +1027,30 @@ export class EndlessModeGame extends Laya.Script {
         // 播放爆炸效果
         ExplosionManager.instance.playExplosion(this.tank.x, this.tank.y, this.gameBox);
         
-        // 销毁玩家坦克
-        this.tank.destroy();
-
-        // 创建结算面板
-        this.showGameStats();
+        // 彻底禁用碰撞检测，而不是移动坦克
+        this.isPlayerDead = true;
         
-        // 显示倒计时
+        // 隐藏坦克
+        this.tank.visible = false;
+        
+        // 直接显示倒计时
         this.showCountdown();
     }
 
-    private showGameStats(): void {
-        // 创建结算面板容器
-        const container = new Laya.Sprite();
-        container.zOrder = 1001;
-        container.alpha = 0;
-        this.owner.addChild(container);
-        
-        // 修改面板尺寸和样式
-        const panel = new Laya.Sprite();
-        this.drawPanel(panel);
-        panel.pivot(200, 200);
-        panel.pos(Laya.stage.width/2, Laya.stage.height/2);
-        container.addChild(panel);
-        
-        // 获取当前段位信息
-        const rankInfo = this.getRankInfo(this.score);
-        
-        // 创建标题
-        const title = new Laya.Text();
-        if (this.rescuedPilots > 0) {
-            title.text = `英雄 你成功救下 ${this.rescuedPilots}名驾驶员！`;
-        } else {
-            title.text = `恭喜 你获得「${rankInfo.rankName}」勋章！`;
-        }
-        title.fontSize = 24;
-        title.color = "#333333";
-        title.width = 400;
-        title.height = 40;
-        title.align = "center";
-        title.x = 0;
-        title.y = 30;
-        title.overflow = Laya.Text.HIDDEN;
-        title.wordWrap = false;
-        panel.addChild(title);
-        
-        // 创建段位图标容器
-        const rankIconContainer = new Laya.Sprite();
-        rankIconContainer.pos(200, 80);
-        
-        // 添加段位图标
-        rankInfo.icons.forEach((iconPath, index) => {
-            const icon = new Laya.Image();
-            icon.skin = iconPath;
-            icon.width = 32;
-            icon.height = 32;
-            icon.x = index * (32 + 4) - (rankInfo.icons.length * (32 + 4)) / 2;
-            icon.y = 0;
-            rankIconContainer.addChild(icon);
-        });
-        
-        panel.addChild(rankIconContainer);
-        
-        // 创建装饰性分割线
-        this.createDecorativeLine(panel, 130);
-        
-        // 调整统计数据容器位置
-        const statsContainer = new Laya.Sprite();
-        statsContainer.pos(30, 150);
-        panel.addChild(statsContainer);
-        
-        // 统计数据项
-        const stats = [
-            { icon: "resources/enemy-tank.png", label: "击毁敌人", value: this.killCount },
-            { icon: "resources/woodBox.png", label: "摧毁木箱", value: this.woodBoxCount },
-            { icon: "resources/metalBox.png", label: "摧毁铁箱", value: this.metalBoxCount },
-            { icon: "resources/treasure.png", label: "摧毁宝箱", value: this.treasureBoxCount }
-        ];
-        
-        stats.forEach((stat, index) => {
-            const item = this.createStatItem(stat, index);
-            item.alpha = 0;
-            item.x = -50;
-            statsContainer.addChild(item);
-            
-            // 延迟入场动画
-            Laya.timer.once(300 + index * 100, this, () => {
-                Laya.Tween.to(item, {
-                    alpha: 1,
-                    x: 0
-                }, 400, Laya.Ease.backOut);
-            });
-        });
-        
-        // 调整总分显示位置
-        const scoreContainer = new Laya.Sprite();
-        scoreContainer.pos(70, 320);
-        panel.addChild(scoreContainer);
-        
-        const scoreLabel = new Laya.Text();
-        scoreLabel.fontSize = 28;
-        scoreLabel.color = "#FFD700";
-        scoreLabel.text = "总分";
-        scoreContainer.addChild(scoreLabel);
-        
-        const scoreValue = new Laya.Text();
-        scoreValue.fontSize = 32;
-        scoreValue.color = "#666666";
-        scoreValue.x = 200;
-        scoreValue.text = "0";
-        scoreContainer.addChild(scoreValue);
-        
-        // 入场动画
-        container.y = 0;
-        container.alpha = 0;
-        Laya.Tween.to(container, {
-            alpha: 1
-        }, 600, Laya.Ease.backOut);
-        
-        // 分数动画
-        let currentScore = 0;
-        const updateScore = () => {
-            currentScore = Math.min(currentScore + Math.ceil(this.score / 20), this.score);
-            scoreValue.text = currentScore.toString();
-            if (currentScore >= this.score) {
-                Laya.timer.clear(this, updateScore);
-            }
-        };
-        
-        Laya.timer.loop(30, this, updateScore);
-        
-        // 2秒后退场动画
-        Laya.timer.once(2000, this, () => {
-            Laya.Tween.to(container, {
-                alpha: 0,
-                y: -50
-            }, 500, Laya.Ease.backIn, Laya.Handler.create(this, () => {
-                container.destroy();
-            }));
-        });
-    }
-
+    // 添加倒计时显示方法
     private showCountdown(): void {
+        // 清理可能存在的旧倒计时面板
+        if (this.currentCountdownContainer) {
+            Laya.Tween.clearAll(this.currentCountdownContainer);
+            Laya.timer.clearAll(this.currentCountdownContainer);
+            this.currentCountdownContainer.destroy();
+            this.currentCountdownContainer = null;
+        }
+        
         // 创建倒计时容器
         const countdownContainer = new Laya.Sprite();
+        this.currentCountdownContainer = countdownContainer;
+        
         countdownContainer.zOrder = 1002;
         countdownContainer.pivot(60, 60);
         countdownContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2);
@@ -1202,10 +1076,167 @@ export class EndlessModeGame extends Laya.Script {
         numberText.valign = "middle";
         numberText.pos(0, 0);
         countdownContainer.addChild(numberText);
+
+        // 创建复活按钮容器
+        const reviveButton = new Laya.Sprite();
+        reviveButton.name = "ReviveButton";
+        reviveButton.zOrder = 1003;
+        
+        // 设置按钮位置
+        reviveButton.pos(Laya.stage.width * 0.75, Laya.stage.height * 0.5);
+        this.owner.addChild(reviveButton);
+
+        // 创建按钮背景
+        const buttonBg = new Laya.Sprite();
+        buttonBg.graphics.drawRect(-122, 2, 240, 104, "rgba(0,0,0,0.1)");
+        buttonBg.graphics.drawPath(-120, 0, [
+            ["moveTo", 10, 0],
+            ["lineTo", 230, 0],
+            ["arcTo", 240, 0, 240, 10, 10],
+            ["lineTo", 240, 90],
+            ["arcTo", 240, 100, 230, 100, 10],
+            ["lineTo", 10, 100],
+            ["arcTo", 0, 100, 0, 90, 10],
+            ["lineTo", 0, 10],
+            ["arcTo", 0, 0, 10, 0, 10],
+            ["closePath"]
+        ], {fillStyle: "#ffffff"});
+        
+        reviveButton.pivot(60, 50);
+        reviveButton.addChild(buttonBg);
+
+        // 添加视频图标
+        const videoIcon = new Laya.Image();
+        videoIcon.skin = "resources/video.png";
+        videoIcon.width = 40;
+        videoIcon.height = 40;
+        videoIcon.pos(-80, 30);
+        reviveButton.addChild(videoIcon);
+
+        // 添加文本
+        const buttonText = new Laya.Text();
+        buttonText.text = "免费复活";
+        buttonText.fontSize = 28;
+        buttonText.color = "#333333";
+        buttonText.width = 160;
+        buttonText.height = 100;
+        buttonText.align = "left";
+        buttonText.valign = "middle";
+        buttonText.pos(-30, 0);
+        reviveButton.addChild(buttonText);
+
+        // 设置点击区域
+        const hitArea = new Laya.HitArea();
+        hitArea.hit.drawRect(-120, 0, 240, 100, "#000000");
+        reviveButton.hitArea = hitArea;
+        reviveButton.mouseEnabled = true;
+
+        // 添加触摸事件
+        reviveButton.on(Laya.Event.MOUSE_DOWN, this, () => {
+            buttonBg.alpha = 0.85;
+            Laya.Tween.to(reviveButton, { scaleX: 0.95, scaleY: 0.95 }, 100, null, null, 0, true, true);
+        });
+        reviveButton.on(Laya.Event.MOUSE_UP, this, () => {
+            buttonBg.alpha = 1;
+            Laya.Tween.to(reviveButton, { scaleX: 1, scaleY: 1 }, 100, null, null, 0, true, true);
+        });
+        reviveButton.on(Laya.Event.MOUSE_OUT, this, () => {
+            buttonBg.alpha = 1;
+            reviveButton.scale(1, 1);
+        });
+
+        // 声明变量来控制倒计时
+        let isCountdownPaused = false;
+        let countdownTimerId = -1;
+        
+        // 复活按钮点击事件
+        reviveButton.on(Laya.Event.CLICK, this, () => {
+            // 播放点击音效
+            Laya.SoundManager.playSound("resources/click.mp3", 1);
+            
+            // 立即暂停倒计时
+            isCountdownPaused = true;
+            
+            // 检查广告实例是否存在并且在微信环境中
+            if (this.videoAd && typeof wx !== 'undefined') {
+                console.log("正在拉起广告...");
+                
+                // 显示微信广告
+                this.videoAd.show().catch(() => {
+                    // 失败重试一次
+                    this.videoAd.load()
+                        .then(() => {
+                            this.videoAd.show();
+                        })
+                        .catch(() => {
+                            console.error('广告显示失败');
+                            // 广告显示失败，恢复倒计时
+                            isCountdownPaused = false;
+                        });
+                });
+                
+                // 监听广告关闭事件
+                this.videoAd.onClose(res => {
+                    // 取消监听，避免多次触发
+                    this.videoAd.offClose();
+                    console.log("广告关闭", res);
+                    
+                    // 用户完整观看广告
+                    if (res && res.isEnded || res === undefined) {
+                        console.log("广告观看完成，复活玩家");
+                        
+                        // 彻底停止倒计时
+                        if (countdownTimerId !== -1) {
+                            Laya.timer.clear(this, updateCountdown);
+                            countdownTimerId = -1;
+                        }
+                        
+                        // 移除倒计时和复活按钮
+                        countdownContainer.destroy();
+                        reviveButton.destroy();
+                        
+                        // 复活玩家
+                        this.revivePlayer();
+                    } else {
+                        console.log("广告未完整观看，继续倒计时");
+                        // 广告未完整观看，恢复倒计时
+                        isCountdownPaused = false;
+                    }
+                });
+            } else {
+                console.log("非微信环境，直接复活");
+                // 非微信环境，直接允许复活（开发测试用）
+                
+                // 彻底停止倒计时
+                if (countdownTimerId !== -1) {
+                    Laya.timer.clear(this, updateCountdown);
+                    countdownTimerId = -1;
+                }
+                
+                // 移除倒计时和复活按钮
+                countdownContainer.destroy();
+                reviveButton.destroy();
+                
+                // 复活玩家
+                this.revivePlayer();
+            }
+        });
         
         // 开始倒计时
         let countdown = 7;
         const updateCountdown = () => {
+            // 如果倒计时被暂停，则跳过更新
+            if (isCountdownPaused) return;
+            
+            // 如果容器已被销毁，清除定时器
+            if (countdownContainer.destroyed) {
+                if (countdownTimerId !== -1) {
+                    Laya.timer.clear(this, updateCountdown);
+                    countdownTimerId = -1;
+                }
+                return;
+            }
+            
             countdown--;
             
             // 更新数字文本
@@ -1215,106 +1246,114 @@ export class EndlessModeGame extends Laya.Script {
             countdownContainer.scale(1.5, 1.5);
             Laya.Tween.to(countdownContainer, { scaleX: 1, scaleY: 1 }, 500, Laya.Ease.backOut);
             
-            // 在倒计时最后1秒重置游戏数据
-            if (countdown === 1) {
-                // 重置分数和相关信息
-                this.score = 0;
-                this.killCount = 0;
-                this.woodBoxCount = 0;
-                this.metalBoxCount = 0;
-                this.treasureBoxCount = 0;
-                this.rescuedPilots = 0;
-                this.initRankUpScores();
-                this.updateScoreDisplay();
-                this.updatePilotDisplay();
-                
-                // 只在当前箱子数量少于15个时才生成新箱子
-                const activeBoxCount = this.boxes.filter(box => !box.destroyed).length;
-                if (activeBoxCount < EndlessModeGame.MIN_BOX_COUNT) {
-                    const boxesToAdd = EndlessModeGame.MIN_BOX_COUNT - activeBoxCount;
-                    for (let i = 0; i < boxesToAdd; i++) {
-                        this.createRandomBox();
-                    }
-                }
-            }
-            
+            // 在倒计时结束时重置游戏
             if (countdown <= 0) {
-                Laya.timer.clear(this, updateCountdown);
-                
-                // 移除灰色滤镜
-                this.gameBox.filters = null;
-                
-                // 移除倒计时容器
-                countdownContainer.destroy();
-                
-                // 重新创建玩家坦克
-                this.initPlayerTank();
-                
-                // 重新启用开火按钮
-                if (this.fireBtn) {
-                    this.fireBtn.setEnabled(true);
+                if (countdownTimerId !== -1) {
+                    Laya.timer.clear(this, updateCountdown);
+                    countdownTimerId = -1;
                 }
-
-                // 创建无敌效果并激活无敌状态
-                this.createInvincibleEffect();
-                this.activateInvincible();
+                
+                // 移除倒计时容器和复活按钮
+                countdownContainer.destroy();
+                reviveButton.destroy();
+                
+                // 重置游戏
+                this.resetGame();
             }
         };
         
-        Laya.timer.loop(1000, this, updateCountdown);
+        // 记录定时器ID
+        countdownTimerId = Laya.timer.loop(1000, this, updateCountdown) as unknown as number;
     }
 
-    // 修改面板绘制方法
-    private drawPanel(panel: Laya.Sprite): void {
-        const width = 400;
-        const height = 400;
+    /**
+     * 复活玩家 - 保持分数和段位
+     */
+    private revivePlayer(): void {
+        console.log("执行玩家复活");
+        // 移除灰色滤镜
+        this.gameBox.filters = null;
         
-        // 绘制白色背景和边框
-        panel.graphics.drawRect(0, 0, width, height, "#ffffff");
-        panel.graphics.drawRect(0, 0, width, height, null, "#e0e0e0", 1);
+        // 重置玩家死亡状态
+        this.isPlayerDead = false;
+        
+        // 重新激活敌方坦克
+        EnemyTank.setGameActive(true);
+        
+        // 重置坦克位置和状态
+        if (this.tank.destroyed) {
+            this.initPlayerTank();
+        } else {
+            // 重新显示坦克并放置到屏幕中央
+            this.tank.visible = true;
+            this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
+            this.tank.rotation = -90; // 重置旋转
+        }
+        
+        // 重新启用开火按钮
+        if (this.fireBtn) {
+            this.fireBtn.setEnabled(true);
+        }
+        
+        // 创建无敌效果并激活无敌状态
+        this.createInvincibleEffect();
+        this.activateInvincible();
     }
 
-    // 修改分割线方法
-    private createDecorativeLine(panel: Laya.Sprite, y: number): void {
-        const line = new Laya.Sprite();
-        const lineWidth = 340;
-        const lineHeight = 1;
+    /**
+     * 重置游戏 - 分数归零
+     */
+    private resetGame(): void {
+        console.log("执行游戏重置");
+        // 移除灰色滤镜
+        this.gameBox.filters = null;
         
-        // 使用浅灰色线条
-        line.graphics.drawRect(30, y, lineWidth, lineHeight, "#e0e0e0");
-        panel.addChild(line);
+        // 重置玩家死亡状态
+        this.isPlayerDead = false;
+        
+        // 重新激活敌方坦克
+        EnemyTank.setGameActive(true);
+        
+        // 重置游戏数据
+        this.score = 0;
+        this.killCount = 0;
+        this.woodBoxCount = 0;
+        this.metalBoxCount = 0;
+        this.treasureBoxCount = 0;
+        this.rescuedPilots = 0;
+        this.initRankUpScores();
+        this.updateScoreDisplay();
+        this.updatePilotDisplay();
+        
+        // 重置坦克状态
+        if (this.tank.destroyed) {
+            this.initPlayerTank();
+        } else {
+            // 重新显示坦克并放置到屏幕中央
+            this.tank.visible = true;
+            this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
+            this.tank.rotation = -90; // 重置旋转
+        }
+        
+        // 重新启用开火按钮
+        if (this.fireBtn) {
+            this.fireBtn.setEnabled(true);
+        }
+        
+        // 创建无敌效果并激活无敌状态
+        this.createInvincibleEffect();
+        this.activateInvincible();
     }
 
-    // 修改统计项创建方法
-    private createStatItem(stat: { icon: string, label: string, value: number }, index: number): Laya.Sprite {
-        const item = new Laya.Sprite();
-        item.y = index * 40;
-        
-        // 创建图标
-        const iconImage = new Laya.Image();
-        iconImage.skin = stat.icon;
-        iconImage.width = 24;
-        iconImage.height = 24;
-        iconImage.pos(0, 0);
-        item.addChild(iconImage);
-        
-        // 创建标签
-        const label = new Laya.Text();
-        label.fontSize = 20;
-        label.color = "#666666";
-        label.x = 40;
-        label.text = stat.label;
-        item.addChild(label);
-        
-        // 创建数值
-        const value = new Laya.Text();
-        value.fontSize = 20;
-        value.color = "#333333";
-        value.x = 300;
-        value.text = stat.value.toString();
-        item.addChild(value);
-        
-        return item;
+    // 添加一个清理所有UI的全局方法
+    private clearAllUI(): void {
+        // 清理倒计时面板
+        if (this.currentCountdownContainer) {
+            Laya.Tween.clearAll(this.currentCountdownContainer);
+            Laya.timer.clearAll(this.currentCountdownContainer);
+            this.currentCountdownContainer.destroy();
+            this.currentCountdownContainer = null;
+        }
     }
 
     private hideLeaderboard(): void {
@@ -1573,5 +1612,21 @@ export class EndlessModeGame extends Laya.Script {
         this.pilotBar = null;
         this.pilotCountText = null;
         this.invincibleEffect = null;
+    }
+
+    // 添加广告初始化方法
+    private initRewardedVideoAd(): void {
+        if (typeof wx !== 'undefined') {
+            try {
+                // 创建激励视频广告实例
+                this.videoAd = wx.createRewardedVideoAd({
+                    adUnitId: 'adunit-c1744ed78e810a8d'
+                });
+                
+                console.log('微信广告初始化成功');
+            } catch (e) {
+                console.error('微信广告初始化失败', e);
+            }
+        }
     }
 } 
