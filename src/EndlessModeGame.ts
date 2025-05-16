@@ -10,6 +10,7 @@ import { PilotPool } from "./PilotPool";
 import { SceneManager } from "./SceneManager";
 import { TutorialManager } from "./TutorialManager";
 import { FireButton } from "./FireButton";
+import { ScoreUtil } from "./ScoreUtil";
 
 
 // 段位系统配置
@@ -358,9 +359,9 @@ export class EndlessModeGame extends Laya.Script {
         bullet.rotation = this.tank.rotation;
         
         // 计算基础速度和段位加成
-        let baseSpeed = 15;
+        let baseSpeed = 12;
         const currentRankInfo = this.getRankInfo(this.score);
-        const rankBonus = Math.floor(Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK) / 4) * 5; // 每个大段位（4个小段位）增加5点速度
+        const rankBonus = Math.floor(Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK) / 4) * 1; // 每个大段位（4个小段位）增加1点速度
         let speed = baseSpeed + rankBonus;
         
         let vx = Math.cos(radian) * speed;
@@ -384,7 +385,7 @@ export class EndlessModeGame extends Laya.Script {
                     this.updateScoreDisplay();
                     ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox, true);
                     // 添加得分弹出效果
-                    this.createScorePopup(enemy.x, enemy.y, EndlessModeGame.ENEMY_TANK_SCORE);
+                    ScoreUtil.getInstance().createScorePopup(enemy.x, enemy.y, EndlessModeGame.ENEMY_TANK_SCORE, this.gameBox);
                     enemy.destroy();
                     this.recycleBullet(bullet);
                     return;
@@ -400,7 +401,7 @@ export class EndlessModeGame extends Laya.Script {
                         this.updateScoreDisplay();
                         ExplosionManager.instance.playExplosion(box.x, box.y, this.gameBox);
                         // 添加得分弹出效果
-                        this.createScorePopup(box.x, box.y, earnedScore);
+                        ScoreUtil.getInstance().createScorePopup(box.x, box.y, earnedScore, this.gameBox);
                     }
                     this.recycleBullet(bullet);
                     return;
@@ -956,7 +957,7 @@ export class EndlessModeGame extends Laya.Script {
                         this.updateScoreDisplay();
                         ExplosionManager.instance.playExplosion(box.x, box.y, this.gameBox);
                         // 添加得分弹出效果
-                        this.createScorePopup(box.x, box.y, earnedScore);
+                        ScoreUtil.getInstance().createScorePopup(box.x, box.y, earnedScore, this.gameBox);
                     }
                     this.recycleBullet(bullet);
                     return;
@@ -1329,40 +1330,6 @@ export class EndlessModeGame extends Laya.Script {
         }
     }
 
-    private createScorePopup(x: number, y: number, score: number): void {
-        // 创建得分文本
-        const scoreText = new Laya.Text();
-        scoreText.text = "+" + score;
-        scoreText.fontSize = 20;
-        scoreText.color = "#4CAF50"; // 使用清新的绿色
-        scoreText.stroke = 2;
-        scoreText.strokeColor = "#ffffff"; // 使用白色描边
-        scoreText.align = "center";
-        scoreText.width = 100;
-        scoreText.anchorX = 0.5;
-        scoreText.anchorY = 0.5;
-        scoreText.pos(x, y);
-        scoreText.zOrder = 100; // 确保显示在最上层
-        this.gameBox.addChild(scoreText);
-
-        // 先快速放大一点
-        scoreText.scale(0.5, 0.5);
-        Laya.Tween.to(scoreText, {
-            scaleX: 1.2,
-            scaleY: 1.2
-        }, 200, Laya.Ease.backOut, Laya.Handler.create(this, () => {
-            // 然后开始向上飘并淡出
-            Laya.Tween.to(scoreText, {
-                y: y - 80,
-                alpha: 0,
-                scaleX: 1,
-                scaleY: 1
-            }, 1000, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
-                scoreText.destroy();
-            }));
-        }));
-    }
-
     private updatePilotDisplay(): void {
         const GRID_WIDTH = 7;  // 每格宽度
         const BAR_HEIGHT = 20; // 血条高度
@@ -1421,7 +1388,7 @@ export class EndlessModeGame extends Laya.Script {
         gradient.graphics.drawCircle(0, 0, glowRadius, null, "#00ff0011");
     
         // 添加阴影效果
-        const shadowFilter = new Laya.GlowFilter("#00ff00", 10, 7, 7, 2); // 绿色阴影，模糊度为10，偏移量为7
+        const shadowFilter = new Laya.GlowFilter("#00ff00", 10, 7, 7);
         gradient.filters = [shadowFilter];
     
         this.invincibleEffect.addChild(gradient);

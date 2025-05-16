@@ -140,7 +140,8 @@ export class PopupPanel extends Laya.Script {
         width?: number;
         height?: number;
         onClose?: Function;
-    } = {}): void {
+        backgroundColor?: string; // 支持颜色值或RGBA格式
+    } = { backgroundColor: "rgba(255, 255, 255, 0.7)" }): void { 
         // 如果已有弹框，先完全清理
         this.hide();
 

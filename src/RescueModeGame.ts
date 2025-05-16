@@ -11,6 +11,9 @@ import { SceneManager } from "./SceneManager";
 import { Achievement } from "./Achievement";
 import { PopupPanel } from "./PopupPanel";
 import { FireButton } from "./FireButton";
+import { PlayerTankSkinUtil, TankSkinType } from "./PlayerTankSkinUtil";
+import { CongratulationUtils } from "./CongratulationUtils";
+import { ScoreUtil } from "./ScoreUtil";
 
 
 // 段位系统配置
@@ -30,26 +33,6 @@ export class RescueModeGame extends Laya.Script {
     private static readonly ENEMY_TANK_SCORE = 100; // 击毁敌方坦克得分
     private static readonly PILOT_RESCUE_SCORE = 1000; // 救援驾驶员的得分
     private static readonly INVINCIBLE_DURATION = 5000; // 无敌时间5秒
-    
-    // 坦克皮肤系统配置
-    private static readonly TANK_SKINS = [
-        { requiredPilots: 0, body: "resources/Retina/tank1_red.png" },
-        { requiredPilots: 10, body: "resources/Retina/tank1_blue.png" },
-        { requiredPilots: 20, body: "resources/Retina/tank1_dark.png" },
-        { requiredPilots: 30, body: "resources/Retina/tank1_sand.png" },
-        { requiredPilots: 40, body: "resources/Retina/tank2_red.png" },
-        { requiredPilots: 50, body: "resources/Retina/tank2_blue.png" },
-        { requiredPilots: 60, body: "resources/Retina/tank2_dark.png" },
-        { requiredPilots: 70, body: "resources/Retina/tank2_sand.png" },
-        { requiredPilots: 80, body: "resources/Retina/tank3_red1.png" },
-        { requiredPilots: 90, body: "resources/Retina/tank3_red2.png" },
-        { requiredPilots: 100, body: "resources/Retina/tank3_blue1.png" },
-        { requiredPilots: 110, body: "resources/Retina/tank3_blue2.png" },
-        { requiredPilots: 120, body: "resources/Retina/tank4_1.png" },
-        { requiredPilots: 130, body: "resources/Retina/tank4_2.png" },
-        { requiredPilots: 140, body: "resources/Retina/tank4_3.png" },
-        { requiredPilots: 150, body: "resources/Retina/tank4_4.png" }
-    ];
     
     // 段位系统定义
     private static readonly RANKS: RankLevel[] = [
@@ -105,7 +88,7 @@ export class RescueModeGame extends Laya.Script {
     private invincibleTimer: number = 0;
     private homeBtn: Laya.Sprite;
     // 新增：坦克皮肤相关属性
-    private currentTankSkin: number = 0;
+    private currentTankSkin: TankSkinType = TankSkinType.TANK1_RED;
     private tankBody: Laya.Image;
     private upgradeTankEffect: Laya.Sprite | null = null;
     private backgroundTiles: Laya.Sprite[] = [];
@@ -115,6 +98,11 @@ export class RescueModeGame extends Laya.Script {
     private initialRank: string; // 添加属性来存储初始军衔
     /** @private 弹框组件 */
     private popupPanel: PopupPanel;
+    // 添加类属性来跟踪当前显示的弹框
+    private currentMessageContainer: Laya.Sprite = null;
+    private currentStatsContainer: Laya.Sprite = null;
+    // 添加更多跟踪容器
+    private currentCountdownContainer: Laya.Sprite = null;
     
     constructor() {
         super();
@@ -381,8 +369,9 @@ export class RescueModeGame extends Laya.Script {
         
         // 创建坦克身体
         this.tankBody = new Laya.Image();
-        const currentSkin = RescueModeGame.TANK_SKINS[0]; // 初始皮肤
-        this.tankBody.skin = currentSkin.body;
+        
+        // 设置坦克皮肤 - 简化逻辑
+        this.tankBody.skin = this.currentTankSkin;
         this.tankBody.width = 30;  
         this.tankBody.height = 30; 
         this.tankBody.pivot(15, 15); 
@@ -449,8 +438,12 @@ export class RescueModeGame extends Laya.Script {
         // 更新坦克旋转角度
         this.tank.rotation = angle;
         
-        // 计算移动距离
-        let speed = 5 * strength;
+        // 计算移动距离，基础速度为5，最大不超过7.5（1.5倍）
+        const baseSpeed = 5;
+        const maxSpeed = baseSpeed * 1.5;
+        let speed = baseSpeed * strength;
+        speed = Math.min(speed, maxSpeed); // 限制最大速度
+        
         let radian = angle * Math.PI / 180;
         
         // 计算新位置
@@ -533,10 +526,13 @@ export class RescueModeGame extends Laya.Script {
         bullet.rotation = this.tank.rotation;
         
         // 计算基础速度和段位加成
-        let baseSpeed = 15;
+        let baseSpeed = 12;
         const currentRankInfo = this.getRankInfo(this.score);
-        const rankBonus = Math.floor(Math.floor(this.score / RescueModeGame.POINTS_PER_RANK) / 4) * 5; // 每个大段位（4个小段位）增加5点速度
+        const rankBonus = Math.floor(Math.floor(this.score / RescueModeGame.POINTS_PER_RANK) / 4) * 1; // 每个大段位（4个小段位）增加1点速度
         let speed = baseSpeed + rankBonus;
+        
+        // 限制最大速度不超过18
+        speed = Math.min(speed, 18);
         
         let vx = Math.cos(radian) * speed;
         let vy = Math.sin(radian) * speed;
@@ -559,7 +555,7 @@ export class RescueModeGame extends Laya.Script {
                     this.updateScoreDisplay();
                     ExplosionManager.instance.playExplosion(enemy.x, enemy.y, this.gameBox, true);
                     // 添加得分弹出效果
-                    this.createScorePopup(enemy.x, enemy.y, RescueModeGame.ENEMY_TANK_SCORE);
+                    ScoreUtil.getInstance().createScorePopup(enemy.x, enemy.y, RescueModeGame.ENEMY_TANK_SCORE, this.gameBox);
                     enemy.destroy();
                     this.recycleBullet(bullet);
                     return;
@@ -575,7 +571,7 @@ export class RescueModeGame extends Laya.Script {
                         this.updateScoreDisplay();
                         ExplosionManager.instance.playExplosion(box.x, box.y, this.gameBox);
                         // 添加得分弹出效果
-                        this.createScorePopup(box.x, box.y, earnedScore);
+                        ScoreUtil.getInstance().createScorePopup(box.x, box.y, earnedScore, this.gameBox);
                     }
                     this.recycleBullet(bullet);
                     return;
@@ -725,7 +721,7 @@ export class RescueModeGame extends Laya.Script {
         if (score >= 66000) {
             const baseStars = 1; // 基础星星数
             const extraStars = Math.floor((score - 66000) / 3000); // 每3000分增加一颗星
-            const totalStars = baseStars + extraStars;
+            const totalStars = Math.min(baseStars + extraStars, 7); // 限制最多7个长城图标
             
             // 创建图标数组
             const icons = [];
@@ -1119,6 +1115,8 @@ export class RescueModeGame extends Laya.Script {
                     this.score += 1000;
                     this.killCount++;
                     this.updateScoreDisplay();
+                    // 添加得分弹出效果
+                    ScoreUtil.getInstance().createScorePopup(enemy.x, enemy.y, 1000, this.gameBox);
                     break;
                 }
             }
@@ -1132,7 +1130,7 @@ export class RescueModeGame extends Laya.Script {
                         this.updateScoreDisplay();
                         ExplosionManager.instance.playExplosion(box.x, box.y, this.gameBox);
                         // 添加得分弹出效果
-                        this.createScorePopup(box.x, box.y, earnedScore);
+                        ScoreUtil.getInstance().createScorePopup(box.x, box.y, earnedScore, this.gameBox);
                     }
                     this.recycleBullet(bullet);
                     return;
@@ -1191,6 +1189,11 @@ export class RescueModeGame extends Laya.Script {
     }
 
     private handleGameOver(): void {
+        // 不再需要记录当前皮肤，因为不再使用 lastActiveSkinIndex
+        
+        // 先清理所有UI
+        this.clearAllUI();
+        
         // 禁用开火按钮
         if (this.fireBtn) {
             this.fireBtn.setEnabled(false);
@@ -1208,8 +1211,17 @@ export class RescueModeGame extends Laya.Script {
         // 播放爆炸效果
         ExplosionManager.instance.playExplosion(this.tank.x, this.tank.y, this.gameBox);
         
+        // 记录坦克位置，用于后续散落驾驶员
+        const tankX = this.tank.x;
+        const tankY = this.tank.y;
+        
         // 销毁玩家坦克
         this.tank.destroy();
+        
+        // 若玩家有救援的驾驶员，在死亡时散落这些驾驶员
+        if (this.rescuedPilots > 0) {
+            this.scatterRescuedPilots(tankX, tankY);
+        }
 
         // 检查军衔晋升
         const currentRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
@@ -1218,7 +1230,7 @@ export class RescueModeGame extends Laya.Script {
             this.popupPanel.show("可喜可贺！", (container: Laya.Sprite) => {
                 // 创建晋升文本
                 const promoteText = new Laya.Text();
-                promoteText.text = `你成功晋升至${currentRank}军衔`;
+                promoteText.text = `你成功晋升至${currentRank}！`;
                 promoteText.fontSize = 24;
                 promoteText.color = "#333333";
                 promoteText.width = 400;
@@ -1228,17 +1240,47 @@ export class RescueModeGame extends Laya.Script {
             }, {
                 width: 400,
                 height: 400,
+                backgroundColor: "rgba(255, 255, 255, 0.5)",
                 onClose: () => {
                     // 更新初始军衔记录
                     this.initialRank = currentRank;
-                    // 在晋升弹框关闭后继续游戏流程
-                    this.continueGameOver();
                 }
             });
-        } else {
-            // 如果没有晋升，直接继续游戏流程
-            this.continueGameOver();
         }
+        
+        // 直接显示倒计时，不再显示结算面板
+        this.showCountdown();
+    }
+    
+    /**
+     * 在玩家死亡时散落所有已救援的驾驶员
+     * @param x 坦克X坐标
+     * @param y 坦克Y坐标
+     */
+    private scatterRescuedPilots(x: number, y: number): void {
+        // 散落所有驾驶员 上限 50
+        if(this.rescuedPilots > 50){
+            this.rescuedPilots = 50;
+        }
+
+        for (let i = 0; i < this.rescuedPilots; i++) {
+            // 从对象池获取驾驶员
+            const pilot = PilotPool.instance.getPilot();
+            
+            // 计算散落位置（在爆炸点周围随机位置）
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * 70 + 10; // 10-80像素的随机距离，使驾驶员密集一些
+            const pilotX = x + Math.cos(angle) * distance;
+            const pilotY = y + Math.sin(angle) * distance;
+            
+            // 设置位置并添加到场景
+            pilot.pos(pilotX, pilotY);
+            this.gameBox.addChild(pilot);
+        }
+        
+        // // 重置救援驾驶员计数
+        // this.rescuedPilots = 0;
+        // this.updatePilotDisplay();
     }
 
     /**
@@ -1252,8 +1294,20 @@ export class RescueModeGame extends Laya.Script {
     }
 
     private showGameStats(): void {
+        // 清理可能存在的旧面板
+        if (this.currentStatsContainer) {
+            // 停止所有相关动画
+            Laya.Tween.clearAll(this.currentStatsContainer);
+            Laya.timer.clearAll(this.currentStatsContainer);
+            // 销毁旧面板
+            this.currentStatsContainer.destroy();
+            this.currentStatsContainer = null;
+        }
+        
         // 创建结算面板容器
         const container = new Laya.Sprite();
+        this.currentStatsContainer = container; // 存储引用以便后续清理
+        
         container.zOrder = 1001;
         container.alpha = 0;
         this.owner.addChild(container);
@@ -1261,8 +1315,7 @@ export class RescueModeGame extends Laya.Script {
         // 修改面板尺寸和样式
         const panel = new Laya.Sprite();
         this.drawPanel(panel);
-        panel.pivot(200, 200);
-        panel.pos(Laya.stage.width/2, Laya.stage.height/2);
+        panel.pos(Laya.stage.width / 2, Laya.stage.height / 2);
         container.addChild(panel);
         
         // 获取当前段位信息
@@ -1276,7 +1329,7 @@ export class RescueModeGame extends Laya.Script {
             title.text = "你尽力了";
         }
         title.fontSize = 24;
-        title.color = "#333333";
+        title.color = "#FFD700"; // 改为金色，与背景搭配
         title.width = 400;
         title.height = 40;
         title.align = "center";
@@ -1327,10 +1380,12 @@ export class RescueModeGame extends Laya.Script {
             
             // 延迟入场动画
             Laya.timer.once(300 + index * 100, this, () => {
-                Laya.Tween.to(item, {
-                    alpha: 1,
-                    x: 0
-                }, 400, Laya.Ease.backOut);
+                if (!container.destroyed) {
+                    Laya.Tween.to(item, {
+                        alpha: 1,
+                        x: 0
+                    }, 400, Laya.Ease.backOut);
+                }
             });
         });
         
@@ -1347,7 +1402,7 @@ export class RescueModeGame extends Laya.Script {
         
         const scoreValue = new Laya.Text();
         scoreValue.fontSize = 32;
-        scoreValue.color = "#666666";
+        scoreValue.color = "#FFFFFF"; // 改为白色，使在深色背景上更清晰
         scoreValue.x = 200;
         scoreValue.text = "0";
         scoreContainer.addChild(scoreValue);
@@ -1362,6 +1417,11 @@ export class RescueModeGame extends Laya.Script {
         // 分数动画
         let currentScore = 0;
         const updateScore = () => {
+            if (container.destroyed) {
+                Laya.timer.clear(this, updateScore);
+                return;
+            }
+            
             currentScore = Math.min(currentScore + Math.ceil(this.score / 20), this.score);
             scoreValue.text = currentScore.toString();
             if (currentScore >= this.score) {
@@ -1373,18 +1433,38 @@ export class RescueModeGame extends Laya.Script {
         
         // 2秒后退场动画
         Laya.timer.once(2000, this, () => {
-            Laya.Tween.to(container, {
-                alpha: 0,
-                y: -50
-            }, 500, Laya.Ease.backIn, Laya.Handler.create(this, () => {
-                container.destroy();
-            }));
+            // 确保面板仍然存在
+            if (this.currentStatsContainer === container && !container.destroyed) {
+                Laya.Tween.to(container, {
+                    alpha: 0,
+                    y: -50
+                }, 500, Laya.Ease.backIn, Laya.Handler.create(this, () => {
+                    // 清理面板
+                    if (this.currentStatsContainer === container) {
+                        this.currentStatsContainer = null;
+                    }
+                    container.destroy();
+                }));
+            }
         });
     }
 
     private showCountdown(): void {
+        // 清理可能存在的旧倒计时面板
+        if (this.currentCountdownContainer) {
+            Laya.Tween.clearAll(this.currentCountdownContainer);
+            Laya.timer.clearAll(this.currentCountdownContainer);
+            this.currentCountdownContainer.destroy();
+            this.currentCountdownContainer = null;
+        }
+        
+        // 确保清理所有其他UI
+        this.clearAllUI();
+        
         // 创建倒计时容器
         const countdownContainer = new Laya.Sprite();
+        this.currentCountdownContainer = countdownContainer;
+        
         countdownContainer.zOrder = 1002;
         countdownContainer.pivot(60, 60);
         countdownContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2);
@@ -1410,10 +1490,115 @@ export class RescueModeGame extends Laya.Script {
         numberText.valign = "middle";
         numberText.pos(0, 0);
         countdownContainer.addChild(numberText);
+
+        // 创建复活按钮容器
+        const reviveButton = new Laya.Sprite();
+        reviveButton.name = "ReviveButton";
+        reviveButton.zOrder = 1003;
+        
+        // 设置按钮位置 - 水平方向保持在75%，垂直方向居中
+        reviveButton.pos(Laya.stage.width * 0.75, Laya.stage.height * 0.5);
+        this.owner.addChild(reviveButton);
+
+        // 创建按钮背景 - 使用圆角矩形和阴影效果
+        const buttonBg = new Laya.Sprite();
+        // 先绘制阴影
+        buttonBg.graphics.drawRect(-122, 2, 240, 104, "rgba(0,0,0,0.1)");
+        // 再绘制白色圆角背景
+        buttonBg.graphics.drawPath(-120, 0, [
+            ["moveTo", 10, 0],
+            ["lineTo", 230, 0],
+            ["arcTo", 240, 0, 240, 10, 10],
+            ["lineTo", 240, 90],
+            ["arcTo", 240, 100, 230, 100, 10],
+            ["lineTo", 10, 100],
+            ["arcTo", 0, 100, 0, 90, 10],
+            ["lineTo", 0, 10],
+            ["arcTo", 0, 0, 10, 0, 10],
+            ["closePath"]
+        ], {fillStyle: "#ffffff"});
+        
+        // 设置按钮的轴心点 - 将Y轴轴心点设在按钮中心
+        reviveButton.pivot(60, 50);
+        reviveButton.addChild(buttonBg);
+
+        // 添加视频图标
+        const videoIcon = new Laya.Image();
+        videoIcon.skin = "resources/video.png";
+        videoIcon.width = 40;
+        videoIcon.height = 40;
+        videoIcon.pos(-80, 30);  // 图标位置保持不变
+        reviveButton.addChild(videoIcon);
+
+        // 添加文本
+        const buttonText = new Laya.Text();
+        buttonText.text = "免费复活";
+        buttonText.fontSize = 28;
+        buttonText.color = "#333333";
+        buttonText.width = 160; 
+        buttonText.height = 100;
+        buttonText.align = "left"; 
+        buttonText.valign = "middle";
+        buttonText.pos(-30, 0);  // 文字位置保持不变
+        reviveButton.addChild(buttonText);
+
+        // 改进点击区域设置 - 使用与按钮背景完全匹配的区域
+        const hitArea = new Laya.HitArea();
+        hitArea.hit.drawRect(-120, 0, 240, 100, "#000000");
+        reviveButton.hitArea = hitArea;
+        reviveButton.mouseEnabled = true;
+
+        // 添加触摸事件
+        reviveButton.on(Laya.Event.MOUSE_DOWN, this, () => {
+            buttonBg.alpha = 0.85;
+            Laya.Tween.to(reviveButton, { scaleX: 0.95, scaleY: 0.95 }, 100, null, null, 0, true, true);
+        });
+        reviveButton.on(Laya.Event.MOUSE_UP, this, () => {
+            buttonBg.alpha = 1;
+            Laya.Tween.to(reviveButton, { scaleX: 1, scaleY: 1 }, 100, null, null, 0, true, true);
+        });
+        reviveButton.on(Laya.Event.MOUSE_OUT, this, () => {
+            buttonBg.alpha = 1;
+            reviveButton.scale(1, 1);
+        });
+
+        // 添加复活按钮点击事件
+        reviveButton.on(Laya.Event.CLICK, this, () => {
+            // 播放点击音效
+            Laya.SoundManager.playSound("resources/click.mp3", 1);
+
+            // 移除倒计时和复活按钮
+            countdownContainer.destroy();
+            reviveButton.destroy();
+
+            // 移除灰色滤镜
+            this.gameBox.filters = null;
+            
+            // 重新初始化玩家坦克，使用当前皮肤
+            this.initPlayerTank();
+            
+            // 重新启用开火按钮
+            if (this.fireBtn) {
+                this.fireBtn.setEnabled(true);
+            }
+
+            // 创建无敌效果并激活无敌状态
+            this.createInvincibleEffect();
+            this.activateInvincible();
+            
+            // 清零救援人数，让玩家可以重新救援死前散落的驾驶员
+            this.rescuedPilots = 0;
+            this.updatePilotDisplay();
+        });
         
         // 开始倒计时
         let countdown = 7;
         const updateCountdown = () => {
+            if (countdownContainer.destroyed) {
+                Laya.timer.clear(this, updateCountdown);
+                return;
+            }
+            
             countdown--;
             
             // 更新数字文本
@@ -1423,9 +1608,22 @@ export class RescueModeGame extends Laya.Script {
             countdownContainer.scale(1.5, 1.5);
             Laya.Tween.to(countdownContainer, { scaleX: 1, scaleY: 1 }, 500, Laya.Ease.backOut);
             
-            // 在倒计时最后1秒重置游戏数据
-            if (countdown === 1) {
-                // 重置分数和相关信息
+            // 在倒计时结束时重置游戏
+            if (countdown <= 0) {
+                Laya.timer.clear(this, updateCountdown);
+                
+                // 移除灰色滤镜
+                this.gameBox.filters = null;
+                
+                // 移除倒计时容器和复活按钮
+                countdownContainer.destroy();
+                reviveButton.destroy();
+                
+                // 重置为初始皮肤
+                const initialSkin = PlayerTankSkinUtil.getInstance().getPlayerSkin(0);
+                this.currentTankSkin = initialSkin.skin;
+                
+                // 重置游戏数据
                 this.score = 0;
                 this.killCount = 0;
                 this.woodBoxCount = 0;
@@ -1436,6 +1634,9 @@ export class RescueModeGame extends Laya.Script {
                 this.updateScoreDisplay();
                 this.updatePilotDisplay();
                 
+                // 重置里程碑庆祝状态
+                CongratulationUtils.getInstance().reset();
+                
                 // 只在当前箱子数量少于15个时才生成新箱子
                 const activeBoxCount = this.boxes.filter(box => !box.destroyed).length;
                 if (activeBoxCount < RescueModeGame.MIN_BOX_COUNT) {
@@ -1444,25 +1645,15 @@ export class RescueModeGame extends Laya.Script {
                         this.createRandomBox();
                     }
                 }
-            }
-            
-            if (countdown <= 0) {
-                Laya.timer.clear(this, updateCountdown);
                 
-                // 移除灰色滤镜
-                this.gameBox.filters = null;
-                
-                // 移除倒计时容器
-                countdownContainer.destroy();
-                
-                // 重新创建玩家坦克
+                // 重新初始化玩家坦克
                 this.initPlayerTank();
                 
                 // 重新启用开火按钮
                 if (this.fireBtn) {
                     this.fireBtn.setEnabled(true);
                 }
-
+                
                 // 创建无敌效果并激活无敌状态
                 this.createInvincibleEffect();
                 this.activateInvincible();
@@ -1477,9 +1668,12 @@ export class RescueModeGame extends Laya.Script {
         const width = 400;
         const height = 400;
         
-        // 绘制白色背景和边框
-        panel.graphics.drawRect(0, 0, width, height, "#ffffff");
-        panel.graphics.drawRect(0, 0, width, height, null, "#e0e0e0", 1);
+        // 绘制半透明黑色背景和金色边框，与坦克升级提示保持一致
+        panel.graphics.drawRect(0, 0, width, height, "rgba(255,255,255,0.6)");
+        panel.graphics.drawRect(0, 0, width, height, null, "#FFD700", 2);
+        
+        // 设置轴心点
+        panel.pivot(width / 2, height / 2);
     }
 
     // 修改分割线方法
@@ -1488,8 +1682,8 @@ export class RescueModeGame extends Laya.Script {
         const lineWidth = 340;
         const lineHeight = 1;
         
-        // 使用浅灰色线条
-        line.graphics.drawRect(30, y, lineWidth, lineHeight, "#e0e0e0");
+        // 使用金色分割线，与背景搭配
+        line.graphics.drawRect(30, y, lineWidth, lineHeight, "#FFD700");
         panel.addChild(line);
     }
 
@@ -1509,7 +1703,7 @@ export class RescueModeGame extends Laya.Script {
         // 创建标签
         const label = new Laya.Text();
         label.fontSize = 20;
-        label.color = "#666666";
+        label.color = "#DDDDDD"; // 改为浅色，提高可读性
         label.x = 40;
         label.text = stat.label;
         item.addChild(label);
@@ -1517,7 +1711,7 @@ export class RescueModeGame extends Laya.Script {
         // 创建数值
         const value = new Laya.Text();
         value.fontSize = 20;
-        value.color = "#333333";
+        value.color = "#FFFFFF"; // 改为白色，使在深色背景上更清晰
         value.x = 300;
         value.text = stat.value.toString();
         item.addChild(value);
@@ -1536,40 +1730,6 @@ export class RescueModeGame extends Laya.Script {
             this.leaderboardPanel.destroy();
             this.leaderboardPanel = null;
         }
-    }
-
-    private createScorePopup(x: number, y: number, score: number): void {
-        // 创建得分文本
-        const scoreText = new Laya.Text();
-        scoreText.text = "+" + score;
-        scoreText.fontSize = 20;
-        scoreText.color = "#4CAF50"; // 使用清新的绿色
-        scoreText.stroke = 2;
-        scoreText.strokeColor = "#ffffff"; // 使用白色描边
-        scoreText.align = "center";
-        scoreText.width = 100;
-        scoreText.anchorX = 0.5;
-        scoreText.anchorY = 0.5;
-        scoreText.pos(x, y);
-        scoreText.zOrder = 100; // 确保显示在最上层
-        this.gameBox.addChild(scoreText);
-
-        // 先快速放大一点
-        scoreText.scale(0.5, 0.5);
-        Laya.Tween.to(scoreText, {
-            scaleX: 1.2,
-            scaleY: 1.2
-        }, 200, Laya.Ease.backOut, Laya.Handler.create(this, () => {
-            // 然后开始向上飘并淡出
-            Laya.Tween.to(scoreText, {
-                y: y - 80,
-                alpha: 0,
-                scaleX: 1,
-                scaleY: 1
-            }, 1000, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
-                scoreText.destroy();
-            }));
-        }));
     }
 
     private updatePilotDisplay(): void {
@@ -1607,147 +1767,66 @@ export class RescueModeGame extends Laya.Script {
         this.pilotCountText.x = barWidth + 5;  // 血条后留5像素间距
         this.pilotCountText.text = `X${this.rescuedPilots}`;
         
-        // 检查是否需要升级坦克皮肤
-        this.checkTankSkinUpgrade();
-    }
-    
-    /**
-     * 检查并升级坦克皮肤
-     */
-    private checkTankSkinUpgrade(): void {
-        // 遍历坦克皮肤配置，找到当前应该使用的皮肤
-        let targetSkinIndex = 0;
-        
-        for (let i = 0; i < RescueModeGame.TANK_SKINS.length; i++) {
-            if (this.rescuedPilots >= RescueModeGame.TANK_SKINS[i].requiredPilots) {
-                targetSkinIndex = i;
-            } else {
-                break;
-            }
+        // 判断是否提升地方坦克难度
+        const EnemyTank = Laya.ClassUtils.getClass("EnemyTank");
+        if (EnemyTank && typeof EnemyTank.updateSpeedStatus === 'function') {
+            EnemyTank.updateSpeedStatus(this.rescuedPilots > 50);
         }
         
-        // 如果皮肤需要升级
-        if (targetSkinIndex !== this.currentTankSkin) {
-            const oldSkinIndex = this.currentTankSkin;
-            this.currentTankSkin = targetSkinIndex;
+        // 检查是否需要升级坦克皮肤
+        // 简化逻辑，保存当前皮肤，获取新皮肤，比较是否需要升级
+        const tempSkin = this.currentTankSkin;
+        const skinConfig = PlayerTankSkinUtil.getInstance().getPlayerSkin(this.rescuedPilots);
+        
+        // 如果皮肤与当前不同，需要升级
+        if (skinConfig.skin !== tempSkin) {
+            // 保存新皮肤
+            this.currentTankSkin = skinConfig.skin;
             
             // 应用新皮肤
-            const newSkin = RescueModeGame.TANK_SKINS[targetSkinIndex];
+            if (this.tankBody) {
+                this.tankBody.skin = skinConfig.skin;
+            }
             
-            // 播放升级特效
-            this.playTankUpgradeEffect(() => {
-                // 特效完成后更新坦克外观
-                this.tankBody.skin = newSkin.body;
-                
-                // 根据升级程度适当调整大小，更高级的坦克略大一些
-                // this.tankBody.width = 40 * sizeScale;
-                // this.tankBody.height = 40 * sizeScale;
-                // this.tankBody.pivot(20 * sizeScale, 20 * sizeScale);
-                
-                // 显示升级提示
-                const nextRequirement = targetSkinIndex < RescueModeGame.TANK_SKINS.length - 1 ? 
-                    RescueModeGame.TANK_SKINS[targetSkinIndex + 1].requiredPilots : null;
-                
-                this.showTankUpgradeMessage(targetSkinIndex, nextRequirement);
-            });
-        }
-    }
-    
-    /**
-     * 播放坦克升级特效
-     */
-    private playTankUpgradeEffect(onComplete: Function): void {
-        // 移除现有特效
-        if (this.upgradeTankEffect) {
-            this.upgradeTankEffect.destroy();
+            // 显示升级提示
+            this.showTankUpgradeMessage(skinConfig.tankName);
         }
         
-        // 创建特效容器
-        this.upgradeTankEffect = new Laya.Sprite();
-        this.gameBox.addChild(this.upgradeTankEffect);
-        this.upgradeTankEffect.pos(this.tank.x, this.tank.y);
-        this.upgradeTankEffect.zOrder = 1000; // 确保显示在最上层
-        
-        // 创建环形特效
-        const ringCount = 3;
-        const rings: Laya.Sprite[] = [];
-        
-        for (let i = 0; i < ringCount; i++) {
-            const ring = new Laya.Sprite();
-            ring.graphics.drawCircle(0, 0, 20, null, "#FFD700", 2);
-            ring.alpha = 0.8;
-            ring.scale(0, 0);
-            this.upgradeTankEffect.addChild(ring);
-            rings.push(ring);
-        }
-        
-        // 创建亮光效果
-        const glow = new Laya.Sprite();
-        glow.graphics.drawCircle(0, 0, 30, "#FFFF00", null);
-        glow.alpha = 0.5;
-        glow.scale(0, 0);
-        this.upgradeTankEffect.addChild(glow);
-        
-        // 播放升级音效
-        Laya.SoundManager.playSound("resources/score.mp3", 1);
-        
-        // 播放环形动画
-        let completed = 0;
-        
-        // 光晕扩散动画
-        Laya.Tween.to(glow, {
-            scaleX: 2.5,
-            scaleY: 2.5,
-            alpha: 0
-        }, 800, Laya.Ease.cubicOut);
-        
-        // 环形动画
-        for (let i = 0; i < ringCount; i++) {
-            Laya.timer.once(i * 150, this, () => {
-                Laya.Tween.to(rings[i], {
-                    scaleX: 2.5,
-                    scaleY: 2.5,
-                    alpha: 0
-                }, 800, Laya.Ease.cubicOut, Laya.Handler.create(this, () => {
-                    completed++;
-                    if (completed === ringCount) {
-                        // 所有环动画完成
-                        this.upgradeTankEffect.destroy();
-                        this.upgradeTankEffect = null;
-                        
-                        // 执行完成回调
-                        if (onComplete) onComplete();
-                    }
-                }));
-            });
-        }
-        
-        // 坦克上下跳动动画
-        const originalY = this.tank.y;
-        Laya.Tween.to(this.tank, { y: originalY - 15 }, 150, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
-            Laya.Tween.to(this.tank, { y: originalY }, 150, Laya.Ease.quadIn);
-        }));
+        // 检查并显示救援里程碑庆祝信息
+        CongratulationUtils.getInstance().checkAndShowCongratulation(
+            this.rescuedPilots, 
+            (title, desc) => this.showCongratulationMessage(title, desc)
+        );
     }
     
     /**
      * 显示坦克升级消息
      */
-    private showTankUpgradeMessage(skinLevel: number, nextRequirement: number | null): void {
+    private showTankUpgradeMessage(levelName: string): void {
+        // 先清理可能存在的旧面板
+        if (this.currentMessageContainer) {
+            Laya.Tween.clearAll(this.currentMessageContainer);
+            Laya.timer.clearAll(this.currentMessageContainer);
+            this.currentMessageContainer.destroy();
+            this.currentMessageContainer = null;
+        }
+        
         // 创建消息容器
         const messageContainer = new Laya.Sprite();
+        this.currentMessageContainer = messageContainer;
+        
         messageContainer.zOrder = 2000;
         messageContainer.alpha = 0;
         this.gameBox.addChild(messageContainer);
         
-        // 坦克升级等级名称
-        const levelNames = [
-            "标准型", "进阶型", "强化型", "高级型", "精英型", "超级战车"
-        ];
+        // 设置面板尺寸
+        const panelWidth = 300;
+        const panelHeight = 80;
         
         // 创建消息背景
         const bg = new Laya.Sprite();
-        bg.graphics.drawRect(0, 0, 300, 80, "rgba(0,0,0,0.6)");
-        bg.graphics.drawRect(0, 0, 300, 80, null, "#FFD700", 2);
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0,0,0,0.6)");
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, null, "#FFD700", 2);
         messageContainer.addChild(bg);
         
         // 创建标题
@@ -1763,10 +1842,7 @@ export class RescueModeGame extends Laya.Script {
         
         // 创建描述
         const desc = new Laya.Text();
-        desc.text = `已获得 ${levelNames[skinLevel]} 坦克`;
-        if (nextRequirement !== null) {
-            desc.text += `\n再救援${nextRequirement - this.rescuedPilots}名驾驶员可获得下一级坦克`;
-        }
+        desc.text = `已获得 ${levelName} 坦克`;
         desc.fontSize = 16;
         desc.color = "#FFFFFF";
         desc.width = 280;
@@ -1776,7 +1852,7 @@ export class RescueModeGame extends Laya.Script {
         messageContainer.addChild(desc);
         
         // 设置位置和动画
-        messageContainer.pivot(150, 40);
+        messageContainer.pivot(panelWidth / 2, panelHeight / 2);
         messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100);
         
         // 显示动画
@@ -1787,12 +1863,96 @@ export class RescueModeGame extends Laya.Script {
         }, 300, Laya.Ease.backOut, Laya.Handler.create(this, () => {
             // 3秒后隐藏
             Laya.timer.once(3000, this, () => {
-                Laya.Tween.to(messageContainer, {
-                    alpha: 0,
-                    y: messageContainer.y - 50
-                }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
-                    messageContainer.destroy();
-                }));
+                if (this.currentMessageContainer === messageContainer && !messageContainer.destroyed) {
+                    Laya.Tween.to(messageContainer, {
+                        alpha: 0,
+                        y: messageContainer.y - 50
+                    }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
+                        if (this.currentMessageContainer === messageContainer) {
+                            this.currentMessageContainer = null;
+                        }
+                        messageContainer.destroy();
+                    }));
+                }
+            });
+        }));
+    }
+
+    /**
+     * 显示庆祝消息 - 复用坦克升级消息的样式
+     */
+    private showCongratulationMessage(title: string, desc: string): void {
+        // 先清理可能存在的旧面板
+        if (this.currentMessageContainer) {
+            Laya.Tween.clearAll(this.currentMessageContainer);
+            Laya.timer.clearAll(this.currentMessageContainer);
+            this.currentMessageContainer.destroy();
+            this.currentMessageContainer = null;
+        }
+        
+        // 创建消息容器
+        const messageContainer = new Laya.Sprite();
+        this.currentMessageContainer = messageContainer;
+        
+        messageContainer.zOrder = 2000;
+        messageContainer.alpha = 0;
+        this.gameBox.addChild(messageContainer);
+        
+        // 设置面板尺寸
+        const panelWidth = 300;
+        const panelHeight = 80;
+        
+        // 创建消息背景
+        const bg = new Laya.Sprite();
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0,0,0,0.6)");
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, null, "#FFD700", 2);
+        messageContainer.addChild(bg);
+        
+        // 创建标题
+        const titleText = new Laya.Text();
+        titleText.text = title;
+        titleText.fontSize = 22;
+        titleText.color = "#FFD700";
+        titleText.width = 280;
+        titleText.height = 30;
+        titleText.align = "center";
+        titleText.pos(10, 10);
+        messageContainer.addChild(titleText);
+        
+        // 创建描述
+        const descText = new Laya.Text();
+        descText.text = desc;
+        descText.fontSize = 16;
+        descText.color = "#FFFFFF";
+        descText.width = 280;
+        descText.height = 40;
+        descText.align = "center";
+        descText.pos(10, 40);
+        messageContainer.addChild(descText);
+        
+        // 设置位置和动画
+        messageContainer.pivot(panelWidth / 2, panelHeight / 2);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100);
+        
+        // 显示动画
+        Laya.Tween.to(messageContainer, {
+            alpha: 1,
+            scaleX: 1.1,
+            scaleY: 1.1
+        }, 300, Laya.Ease.backOut, Laya.Handler.create(this, () => {
+            // 3秒后隐藏
+            Laya.timer.once(3000, this, () => {
+                if (this.currentMessageContainer === messageContainer && !messageContainer.destroyed) {
+                    Laya.Tween.to(messageContainer, {
+                        alpha: 0,
+                        y: messageContainer.y - 50
+                    }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
+                        if (this.currentMessageContainer === messageContainer) {
+                            this.currentMessageContainer = null;
+                        }
+                        messageContainer.destroy();
+                    }));
+                }
             });
         }));
     }
@@ -1984,8 +2144,38 @@ export class RescueModeGame extends Laya.Script {
         this.lastRankIndex = -1;
     }
 
+    // 添加一个清理所有UI的全局方法
+    private clearAllUI(): void {
+        // 清理坦克升级消息
+        if (this.currentMessageContainer) {
+            Laya.Tween.clearAll(this.currentMessageContainer);
+            Laya.timer.clearAll(this.currentMessageContainer);
+            this.currentMessageContainer.destroy();
+            this.currentMessageContainer = null;
+        }
+        
+        // 清理结算面板
+        if (this.currentStatsContainer) {
+            Laya.Tween.clearAll(this.currentStatsContainer);
+            Laya.timer.clearAll(this.currentStatsContainer);
+            this.currentStatsContainer.destroy();
+            this.currentStatsContainer = null;
+        }
+        
+        // 清理倒计时面板
+        if (this.currentCountdownContainer) {
+            Laya.Tween.clearAll(this.currentCountdownContainer);
+            Laya.timer.clearAll(this.currentCountdownContainer);
+            this.currentCountdownContainer.destroy();
+            this.currentCountdownContainer = null;
+        }
+    }
+
     // 6. 修改 onDestroy 方法，确保完全清理
     onDestroy(): void {
+        // 先清理所有UI
+        this.clearAllUI();
+        
         // 销毁游戏
         this.destroyGame();
         

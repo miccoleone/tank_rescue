@@ -1,6 +1,7 @@
 const { regClass } = Laya;
 import { PilotPool } from "./PilotPool";
 import { Achievement } from "./Achievement";
+import { ScoreUtil } from "./ScoreUtil";
 
 @regClass()
 export class Pilot extends Laya.Sprite {
@@ -89,24 +90,36 @@ export class Pilot extends Laya.Sprite {
         // 创建粒子效果
         this.createParticles();
 
-        // 7秒后自动消失（无论是否为池对象）
-        this.autoDestroyTimer = Laya.timer.once(7000, this, this.fadeOut) as unknown as number;
+        // 6秒后自动消失（无论是否为池对象）
+        this.autoDestroyTimer = Laya.timer.once(6000, this, this.fadeOut) as unknown as number;
     }
 
     private createRescueAnimation(): void {
+        // 为每个驾驶员添加随机性
+        const jumpHeight = 8 + Math.random() * 4; // 随机跳跃高度 (8-12)
+        const jumpUpDuration = 180 + Math.random() * 40; // 随机上升时间 (180-220ms)
+        const jumpDownDuration = 180 + Math.random() * 40; // 随机下降时间 (180-220ms)
+        
+        // 添加随机初始延迟，使所有驾驶员不同步起跳
+        const initialDelay = Math.random() * 400; // 0-400ms的随机延迟
+        
         // 上下跳动动画
         const jumpAnimation = () => {
             Laya.Tween.to(this.pilotImage, {
-                y: this.pilotImage.y - 10 // 向上跳动
-            }, 200, Laya.Ease.sineOut, Laya.Handler.create(this, () => {
+                y: this.pilotImage.y - jumpHeight // 向上跳动，使用随机高度
+            }, jumpUpDuration, Laya.Ease.sineOut, Laya.Handler.create(this, () => {
                 Laya.Tween.to(this.pilotImage, {
-                    y: this.pilotImage.y + 10 // 回到原位
-                }, 200, Laya.Ease.sineIn, Laya.Handler.create(this, jumpAnimation));
+                    y: this.pilotImage.y + jumpHeight // 回到原位，保持与上跳高度一致
+                }, jumpDownDuration, Laya.Ease.sineIn, Laya.Handler.create(this, jumpAnimation));
             }));
         };
         
-        // 启动跳动动画
-        jumpAnimation();
+        // 使用随机延迟启动跳动动画
+        if (initialDelay > 0) {
+            Laya.timer.once(initialDelay, this, jumpAnimation);
+        } else {
+            jumpAnimation();
+        }
         
         // 创建呼救文字气泡
         this.createHelpBubble();
@@ -219,11 +232,14 @@ export class Pilot extends Laya.Sprite {
 
         this.isRescued = true;
 
-        // 创建救援特效
-        this.createRescueEffect();
-        
-        // 创建得分弹出动画
-        this.createScorePopup();
+        // 使用ScoreUtil创建救援特效和得分弹出动画
+        if (this.parent && this.parent instanceof Laya.Sprite) {
+            // 创建救援感谢效果
+            ScoreUtil.getInstance().createThanksEffect(this.x, this.y, this.parent);
+            
+            // 创建得分弹出动画
+            ScoreUtil.getInstance().createScorePopup(this.x, this.y, 1000, this.parent);
+        }
 
         // 更新军衔 - 每救援一名驾驶员增加一名战士
         Achievement.instance.addRescuedSoldier();
@@ -236,66 +252,6 @@ export class Pilot extends Laya.Sprite {
             // 非池对象直接销毁
             this.destroy();
         }
-    }
-
-    private createRescueEffect(): void {
-        // 创建一个向上飘的"已救援"文本
-        const rescueText = new Laya.Text();
-        rescueText.text = "THANKS!";
-        rescueText.fontSize = 20;
-        rescueText.color = "#4CAF50";
-        rescueText.width = 60;
-        rescueText.align = "center";
-        rescueText.pos(-30, -20);
-
-        // 将文本添加到父容器而不是驾驶员本身，这样驾驶员销毁后文本动画仍能继续
-        if (this.parent) {
-            this.parent.addChild(rescueText);
-            rescueText.pos(this.x - 30, this.y - 20);
-
-            // 向上飘并淡出的动画
-            Laya.Tween.to(rescueText, {
-                y: rescueText.y - 30,
-                alpha: 0
-            }, 1200, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
-                rescueText.destroy();
-            }));
-        }
-    }
-
-    private createScorePopup(): void {
-        // 创建得分文本
-        const scoreText = new Laya.Text();
-        scoreText.text = "+1000";
-        scoreText.fontSize = 24;
-        scoreText.color = "#4CAF50"; // 使用清新的绿色
-        scoreText.stroke = 2;
-        scoreText.strokeColor = "#ffffff"; // 使用白色描边
-        scoreText.width = 100;
-        scoreText.align = "center";
-        scoreText.anchorX = 0.5;
-        scoreText.anchorY = 0.5;
-        
-        // 将文本添加到父容器
-        this.parent.addChild(scoreText);
-        scoreText.pos(this.x, this.y - 30);
-
-        // 创建弹出动画
-        scoreText.scale(0.5, 0.5);
-        Laya.Tween.to(scoreText, {
-            scaleX: 1.2,
-            scaleY: 1.2
-        }, 200, Laya.Ease.backOut, Laya.Handler.create(this, () => {
-            // 向上飘并淡出
-            Laya.Tween.to(scoreText, {
-                y: scoreText.y - 50,
-                alpha: 0,
-                scaleX: 1,
-                scaleY: 1
-            }, 800, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
-                scoreText.destroy();
-            }));
-        }));
     }
 
     public destroy(): void {

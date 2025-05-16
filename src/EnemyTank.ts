@@ -14,13 +14,31 @@ export class EnemyTank extends Laya.Sprite {
     private lastMoveTime: number = 0;
     private currentAngle: number = 0;
     private boxes: any[] = []; // 存储箱子引用
+    private moveSpeed: number = EnemyTank.CHASE_SPEED; // 初始速度
     
-    constructor(targetTank: Laya.Sprite, isChasing: boolean, boxes: any[]) {
+    // 添加一个静态变量来标记是否需要提速
+    private static increasedSpeed: boolean = false;
+
+    // 添加静态方法用于更新速度状态
+    public static updateSpeedStatus(isHighSpeed: boolean): void {
+        EnemyTank.increasedSpeed = isHighSpeed;
+    }
+    
+    constructor(playerTank: Laya.Sprite, isChasing: boolean = true, boxes: any[] = []) {
         super();
-        this.targetTank = targetTank;
+        this.targetTank = playerTank;
         this.isChasing = isChasing;
         this.boxes = boxes;
         
+        // 设置敌方坦克速度
+        this.moveSpeed = EnemyTank.increasedSpeed ? 
+            EnemyTank.CHASE_SPEED * 1.5 : // 提速1.5倍
+            EnemyTank.CHASE_SPEED;       // 正常速度
+        
+        this.init();
+    }
+    
+    private init(): void {
         // 创建坦克图像
         let tankImage = new Laya.Image();
         tankImage.skin = "resources/enemy-tank.png";
@@ -55,8 +73,8 @@ export class EnemyTank extends Laya.Sprite {
         this.rotation = angle * 180 / Math.PI;
         
         // 计算新位置
-        const newX = this.x + Math.cos(angle) * EnemyTank.CHASE_SPEED;
-        const newY = this.y + Math.sin(angle) * EnemyTank.CHASE_SPEED;
+        const newX = this.x + Math.cos(angle) * this.moveSpeed;
+        const newY = this.y + Math.sin(angle) * this.moveSpeed;
         
         // 只有在不会碰撞的情况下才移动
         if (!this.willCollideWithBoxes(newX, newY)) {
