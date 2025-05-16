@@ -15,6 +15,15 @@ import { PlayerTankSkinUtil, TankSkinType } from "./PlayerTankSkinUtil";
 import { CongratulationUtils } from "./CongratulationUtils";
 import { ScoreUtil } from "./ScoreUtil";
 
+// 添加微信小游戏API的类型声明
+declare const wx: {
+    createRewardedVideoAd: (options: { adUnitId: string }) => {
+        show: () => Promise<any>;
+        load: () => Promise<any>;
+        onClose: (callback: (res?: { isEnded?: boolean }) => void) => void;
+        offClose: () => void;
+    };
+};
 
 // 段位系统配置
 interface RankLevel {
@@ -103,7 +112,10 @@ export class RescueModeGame extends Laya.Script {
     private currentStatsContainer: Laya.Sprite = null;
     // 添加更多跟踪容器
     private currentCountdownContainer: Laya.Sprite = null;
-    
+    // 添加视频广告实例
+    private videoAd: any;
+    private isPlayerDead: boolean = false; // 新增：玩家死亡标志
+
     constructor() {
         super();
         // 预加载音效和图片
@@ -206,6 +218,25 @@ export class RescueModeGame extends Laya.Script {
         
         // 记录初始军衔
         this.initialRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
+        // 在onAwake方法末尾添加
+        this.initRewardedVideoAd();
+    }
+
+
+        // 在类初始化部分，添加广告实例初始化
+    private initRewardedVideoAd(): void {
+        if (typeof wx !== 'undefined') {
+            try {
+                // 创建激励视频广告实例
+                this.videoAd = wx.createRewardedVideoAd({
+                    adUnitId: 'adunit-c1744ed78e810a8d'
+                });
+                
+                console.log('微信广告初始化成功');
+            } catch (e) {
+                console.error('微信广告初始化失败', e);
+            }
+        }
     }
 
     private initGameScene(): void {
@@ -842,6 +873,9 @@ export class RescueModeGame extends Laya.Script {
             // 获取新的段位信息
             const rankInfo = this.getRankInfo(this.score);
             
+            // 如果已经达到最高级段位（7个长城），就不显示特效
+            if (this.score >= 84000) return;  // 84000分对应7个长城 (66000 + 3000 * 6)
+            
             // 创建升级特效容器
             const container = new Laya.Sprite();
             container.pos(this.tank.x, this.tank.y - 30);
@@ -1076,7 +1110,7 @@ export class RescueModeGame extends Laya.Script {
     }
 
     private checkCollisions(): void {
-        if (!this.tank || this.tank.destroyed) return;
+        if (!this.tank || this.tank.destroyed || this.isPlayerDead) return;
         
         // 检查与敌方坦克的碰撞
         for (const enemy of this.enemyTanks) {
@@ -1145,8 +1179,8 @@ export class RescueModeGame extends Laya.Script {
             }
         }
 
-        // 检查玩家坦克与驾驶员的碰撞
-        if (this.tank && !this.tank.destroyed) {
+        // 检查玩家坦克与驾驶员的碰撞，只在坦克在屏幕内时执行
+        if (!this.tank.destroyed) {
             // 获取所有驾驶员
             const pilots: Pilot[] = [];
             for (let i = 0; i < this.gameBox.numChildren; i++) {
@@ -1189,8 +1223,6 @@ export class RescueModeGame extends Laya.Script {
     }
 
     private handleGameOver(): void {
-        // 不再需要记录当前皮肤，因为不再使用 lastActiveSkinIndex
-        
         // 先清理所有UI
         this.clearAllUI();
         
@@ -1215,8 +1247,12 @@ export class RescueModeGame extends Laya.Script {
         const tankX = this.tank.x;
         const tankY = this.tank.y;
         
-        // 销毁玩家坦克
-        this.tank.destroy();
+        // 彻底禁用碰撞检测，而不是移动坦克
+        // 1. 设置一个标志，表示坦克已经"死亡"
+        this.isPlayerDead = true;
+        
+        // 2. 可以选择隐藏坦克，但不是必须的
+        this.tank.visible = false;
         
         // 若玩家有救援的驾驶员，在死亡时散落这些驾驶员
         if (this.rescuedPilots > 0) {
@@ -1263,6 +1299,10 @@ export class RescueModeGame extends Laya.Script {
             this.rescuedPilots = 50;
         }
 
+        // 先暂停游戏中所有已有的驾驶员倒计时
+        PilotPool.pauseAllPilots(this.gameBox);
+        
+        // 创建新的驾驶员
         for (let i = 0; i < this.rescuedPilots; i++) {
             // 从对象池获取驾驶员
             const pilot = PilotPool.instance.getPilot();
@@ -1278,7 +1318,7 @@ export class RescueModeGame extends Laya.Script {
             this.gameBox.addChild(pilot);
         }
         
-        // // 重置救援驾驶员计数
+        // 重置救援驾驶员计数
         // this.rescuedPilots = 0;
         // this.updatePilotDisplay();
     }
@@ -1449,6 +1489,7 @@ export class RescueModeGame extends Laya.Script {
         });
     }
 
+    // 在直接显示倒计时之前，确保所有驾驶员计时器都已正常启动
     private showCountdown(): void {
         // 清理可能存在的旧倒计时面板
         if (this.currentCountdownContainer) {
@@ -1460,6 +1501,10 @@ export class RescueModeGame extends Laya.Script {
         
         // 确保清理所有其他UI
         this.clearAllUI();
+        
+        // 恢复所有驾驶员的计时器，确保它们的倒计时正常运行
+        // 注意：这里恢复是为了确保任何之前暂停的驾驶员都会继续倒计时
+        PilotPool.resumeAllPilots(this.gameBox);
         
         // 创建倒计时容器
         const countdownContainer = new Laya.Sprite();
@@ -1562,40 +1607,114 @@ export class RescueModeGame extends Laya.Script {
             reviveButton.scale(1, 1);
         });
 
-        // 添加复活按钮点击事件
+        // 声明一个变量来控制倒计时是否暂停
+        let isCountdownPaused = false;
+        // 引用倒计时定时器ID，以便在必要时清除
+        let countdownTimerId = -1;
+        
+        // 复活按钮点击事件部分，使用简化逻辑
         reviveButton.on(Laya.Event.CLICK, this, () => {
             // 播放点击音效
             Laya.SoundManager.playSound("resources/click.mp3", 1);
-
-            // 移除倒计时和复活按钮
-            countdownContainer.destroy();
-            reviveButton.destroy();
-
-            // 移除灰色滤镜
-            this.gameBox.filters = null;
             
-            // 重新初始化玩家坦克，使用当前皮肤
-            this.initPlayerTank();
+            // 立即暂停倒计时
+            isCountdownPaused = true;
             
-            // 重新启用开火按钮
-            if (this.fireBtn) {
-                this.fireBtn.setEnabled(true);
+            // 检查广告实例是否存在并且在微信环境中
+            // @ts-ignore
+            if (this.videoAd && typeof wx !== 'undefined') {
+                console.log("正在拉起广告...");
+                
+                // 暂停所有驾驶员的倒计时
+                PilotPool.pauseAllPilots(this.gameBox);
+                
+                // 显示微信广告
+                this.videoAd.show().catch(() => {
+                    // 失败重试一次
+                    this.videoAd.load()
+                        .then(() => {
+                            // 再次暂停所有驾驶员的倒计时（以防在加载期间恢复）
+                            PilotPool.pauseAllPilots(this.gameBox);
+                            this.videoAd.show();
+                        })
+                        .catch(() => {
+                            console.error('广告显示失败');
+                            // 广告显示失败，恢复倒计时
+                            isCountdownPaused = false;
+                            // 恢复所有驾驶员的倒计时
+                            PilotPool.resumeAllPilots(this.gameBox);
+                        });
+                });
+                
+                // 监听广告关闭事件
+                // @ts-ignore
+                this.videoAd.onClose(res => {
+                    // 取消监听，避免多次触发
+                    this.videoAd.offClose();
+                    console.log("广告关闭", res);
+                    
+                    // 用户完整观看广告
+                    // @ts-ignore
+                    if (res && res.isEnded || res === undefined) {
+                        console.log("广告观看完成，复活玩家");
+                        
+                        // 重置所有驾驶员的计时器为完整的6秒
+                        PilotPool.resetAllPilotsTimer(this.gameBox);
+                        
+                        // 彻底停止倒计时
+                        if (countdownTimerId !== -1) {
+                            Laya.timer.clear(this, updateCountdown);
+                            countdownTimerId = -1;
+                        }
+                        
+                        // 移除倒计时和复活按钮
+                        countdownContainer.destroy();
+                        reviveButton.destroy();
+                        
+                        // 复活玩家
+                        this.revivePlayer();
+                    } else {
+                        console.log("广告未完整观看，继续倒计时");
+                        // 广告未完整观看，恢复倒计时
+                        isCountdownPaused = false;
+                        // 恢复所有驾驶员的倒计时
+                        PilotPool.resumeAllPilots(this.gameBox);
+                    }
+                });
+            } else {
+                console.log("非微信环境，直接复活");
+                // 非微信环境，直接允许复活（开发测试用）
+                
+                // 重置所有驾驶员的计时器为完整的6秒
+                PilotPool.resetAllPilotsTimer(this.gameBox);
+                
+                // 彻底停止倒计时
+                if (countdownTimerId !== -1) {
+                    Laya.timer.clear(this, updateCountdown);
+                    countdownTimerId = -1;
+                }
+                
+                // 移除倒计时和复活按钮
+                countdownContainer.destroy();
+                reviveButton.destroy();
+                
+                // 复活玩家
+                this.revivePlayer();
             }
-
-            // 创建无敌效果并激活无敌状态
-            this.createInvincibleEffect();
-            this.activateInvincible();
-            
-            // 清零救援人数，让玩家可以重新救援死前散落的驾驶员
-            this.rescuedPilots = 0;
-            this.updatePilotDisplay();
         });
         
         // 开始倒计时
         let countdown = 7;
         const updateCountdown = () => {
+            // 如果倒计时被暂停，则跳过更新
+            if (isCountdownPaused) return;
+            
+            // 如果容器已被销毁，清除定时器
             if (countdownContainer.destroyed) {
-                Laya.timer.clear(this, updateCountdown);
+                if (countdownTimerId !== -1) {
+                    Laya.timer.clear(this, updateCountdown);
+                    countdownTimerId = -1;
+                }
                 return;
             }
             
@@ -1610,57 +1729,134 @@ export class RescueModeGame extends Laya.Script {
             
             // 在倒计时结束时重置游戏
             if (countdown <= 0) {
-                Laya.timer.clear(this, updateCountdown);
-                
-                // 移除灰色滤镜
-                this.gameBox.filters = null;
+                if (countdownTimerId !== -1) {
+                    Laya.timer.clear(this, updateCountdown);
+                    countdownTimerId = -1;
+                }
                 
                 // 移除倒计时容器和复活按钮
                 countdownContainer.destroy();
                 reviveButton.destroy();
                 
-                // 重置为初始皮肤
-                const initialSkin = PlayerTankSkinUtil.getInstance().getPlayerSkin(0);
-                this.currentTankSkin = initialSkin.skin;
-                
-                // 重置游戏数据
-                this.score = 0;
-                this.killCount = 0;
-                this.woodBoxCount = 0;
-                this.metalBoxCount = 0;
-                this.treasureBoxCount = 0;
-                this.rescuedPilots = 0;
-                this.initRankUpScores();
-                this.updateScoreDisplay();
-                this.updatePilotDisplay();
-                
-                // 重置里程碑庆祝状态
-                CongratulationUtils.getInstance().reset();
-                
-                // 只在当前箱子数量少于15个时才生成新箱子
-                const activeBoxCount = this.boxes.filter(box => !box.destroyed).length;
-                if (activeBoxCount < RescueModeGame.MIN_BOX_COUNT) {
-                    const boxesToAdd = RescueModeGame.MIN_BOX_COUNT - activeBoxCount;
-                    for (let i = 0; i < boxesToAdd; i++) {
-                        this.createRandomBox();
-                    }
-                }
-                
-                // 重新初始化玩家坦克
-                this.initPlayerTank();
-                
-                // 重新启用开火按钮
-                if (this.fireBtn) {
-                    this.fireBtn.setEnabled(true);
-                }
-                
-                // 创建无敌效果并激活无敌状态
-                this.createInvincibleEffect();
-                this.activateInvincible();
+                // 重置游戏
+                this.resetGame();
             }
         };
         
-        Laya.timer.loop(1000, this, updateCountdown);
+        // 记录定时器ID
+        countdownTimerId = Laya.timer.loop(1000, this, updateCountdown) as unknown as number;
+    }
+    
+    /**
+     * 复活玩家 - 单独封装复活逻辑
+     */
+    private revivePlayer(): void {
+        console.log("执行玩家复活");
+        // 移除灰色滤镜
+        this.gameBox.filters = null;
+        
+        // 重置玩家死亡状态
+        this.isPlayerDead = false;
+        
+        // 保持当前皮肤不变，因为玩家完整观看了广告
+        // 注意：不重置currentTankSkin，保持之前的高级皮肤
+        
+        // 重置坦克位置和状态
+        if (this.tank.destroyed) {
+            this.initPlayerTank();
+        } else {
+            // 重新显示坦克并放置到屏幕中央
+            this.tank.visible = true;
+            this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
+            this.tankBody.rotation = -90; // 重置旋转
+            
+            // 保持当前皮肤（当坦克未被销毁时需要手动更新皮肤）
+            if (this.tankBody) {
+                this.tankBody.skin = this.currentTankSkin;
+            }
+        }
+        
+        // 重新启用开火按钮
+        if (this.fireBtn) {
+            this.fireBtn.setEnabled(true);
+        }
+        
+        // 创建无敌效果并激活无敌状态
+        this.createInvincibleEffect();
+        this.activateInvincible();
+        
+        // 确保所有驾驶员的计时器都已恢复正常
+        PilotPool.resumeAllPilots(this.gameBox);
+        
+        // 清零救援人数，让玩家可以重新救援死前散落的驾驶员
+        this.rescuedPilots = 0;
+        this.updatePilotDisplay();
+    }
+    
+    /**
+     * 重置游戏 - 单独封装游戏重置逻辑
+     */
+    private resetGame(): void {
+        console.log("执行游戏重置");
+        // 移除灰色滤镜
+        this.gameBox.filters = null;
+        
+        // 重置玩家死亡状态
+        this.isPlayerDead = false;
+        
+        // 重置为初始皮肤（因为玩家未完整观看广告）
+        const initialSkin = PlayerTankSkinUtil.getInstance().getPlayerSkin(0);
+        this.currentTankSkin = initialSkin.skin;
+        
+        // 重置游戏数据
+        this.score = 0;
+        this.killCount = 0;
+        this.woodBoxCount = 0;
+        this.metalBoxCount = 0;
+        this.treasureBoxCount = 0;
+        this.rescuedPilots = 0;
+        this.initRankUpScores();
+        this.updateScoreDisplay();
+        this.updatePilotDisplay();
+        
+        // 重置里程碑庆祝状态
+        CongratulationUtils.getInstance().reset();
+        
+        // 确保所有驾驶员的计时器都已恢复正常
+        PilotPool.resumeAllPilots(this.gameBox);
+        
+        // 只在当前箱子数量少于15个时才生成新箱子
+        const activeBoxCount = this.boxes.filter(box => !box.destroyed).length;
+        if (activeBoxCount < RescueModeGame.MIN_BOX_COUNT) {
+            const boxesToAdd = RescueModeGame.MIN_BOX_COUNT - activeBoxCount;
+            for (let i = 0; i < boxesToAdd; i++) {
+                this.createRandomBox();
+            }
+        }
+        
+        // 重置坦克状态
+        if (this.tank.destroyed) {
+            this.initPlayerTank();
+        } else {
+            // 重新显示坦克并放置到屏幕中央
+            this.tank.visible = true;
+            this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
+            this.tankBody.rotation = -90; // 重置旋转
+            
+            // 应用初始皮肤
+            if (this.tankBody) {
+                this.tankBody.skin = this.currentTankSkin;
+            }
+        }
+        
+        // 重新启用开火按钮
+        if (this.fireBtn) {
+            this.fireBtn.setEnabled(true);
+        }
+        
+        // 创建无敌效果并激活无敌状态
+        this.createInvincibleEffect();
+        this.activateInvincible();
     }
 
     // 修改面板绘制方法

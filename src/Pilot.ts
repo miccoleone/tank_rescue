@@ -18,6 +18,8 @@ export class Pilot extends Laya.Sprite {
     private isRescued: boolean = false;
     private isPoolObject: boolean = false; // 标记是否为池对象
     private autoDestroyTimer: number = -1; // 自动销毁计时器ID
+    private timeRemaining: number = 6000; // 记录剩余时间
+    private lastTimerSetTime: number = 0; // 记录上次设置计时器的时间
 
     constructor(isPoolObject: boolean = false) {
         super();
@@ -90,8 +92,14 @@ export class Pilot extends Laya.Sprite {
         // 创建粒子效果
         this.createParticles();
 
+        // 重置剩余时间
+        this.timeRemaining = 6000;
+        
+        // 记录当前时间
+        this.lastTimerSetTime = Date.now();
+        
         // 6秒后自动消失（无论是否为池对象）
-        this.autoDestroyTimer = Laya.timer.once(6000, this, this.fadeOut) as unknown as number;
+        this.autoDestroyTimer = Laya.timer.once(this.timeRemaining, this, this.fadeOut) as unknown as number;
     }
 
     private createRescueAnimation(): void {
@@ -277,5 +285,67 @@ export class Pilot extends Laya.Sprite {
         
         // 调用父类销毁方法
         super.destroy();
+    }
+
+    /**
+     * 暂停计时器
+     */
+    public pauseTimer(): void {
+        // 只有当计时器存在且驾驶员没有被救或销毁时才暂停
+        if (this.autoDestroyTimer !== -1 && !this.isRescued && !this.destroyed) {
+            // 计算剩余时间
+            const elapsedTime = Date.now() - this.lastTimerSetTime;
+            this.timeRemaining = Math.max(0, this.timeRemaining - elapsedTime);
+            
+            // 清除现有计时器
+            Laya.timer.clear(this, this.fadeOut);
+            this.autoDestroyTimer = -1;
+            
+            // 添加DEBUG信息
+            console.log(`驾驶员暂停倒计时，剩余: ${this.timeRemaining}ms`);
+        }
+    }
+    
+    /**
+     * 恢复计时器
+     */
+    public resumeTimer(): void {
+        // 只有当没有计时器，且驾驶员没有被救或销毁时才恢复
+        if (this.autoDestroyTimer === -1 && !this.isRescued && !this.destroyed && this.timeRemaining > 0) {
+            // 记录恢复时间
+            this.lastTimerSetTime = Date.now();
+            
+            // 使用剩余时间创建新的计时器
+            this.autoDestroyTimer = Laya.timer.once(this.timeRemaining, this, this.fadeOut) as unknown as number;
+            
+            // 添加DEBUG信息
+            console.log(`驾驶员恢复倒计时，剩余: ${this.timeRemaining}ms`);
+        }
+    }
+    
+    /**
+     * 重置计时器为完整的6秒
+     */
+    public resetTimer(): void {
+        // 只有当驾驶员没有被救或销毁时才重置
+        if (!this.isRescued && !this.destroyed) {
+            // 清除现有计时器
+            if (this.autoDestroyTimer !== -1) {
+                Laya.timer.clear(this, this.fadeOut);
+                this.autoDestroyTimer = -1;
+            }
+            
+            // 重置为完整6秒
+            this.timeRemaining = 6000;
+            
+            // 记录当前时间
+            this.lastTimerSetTime = Date.now();
+            
+            // 创建新的计时器
+            this.autoDestroyTimer = Laya.timer.once(this.timeRemaining, this, this.fadeOut) as unknown as number;
+            
+            // 添加DEBUG信息
+            console.log("驾驶员计时器已重置为6秒");
+        }
     }
 }

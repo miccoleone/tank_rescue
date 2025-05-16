@@ -44,4 +44,61 @@ export class PilotPool {
         // 直接销毁
         pilot.destroy();
     }
+    
+    /**
+     * 暂停场景中所有驾驶员的计时器
+     * @param gameBox 游戏容器
+     */
+    public static pauseAllPilots(gameBox: Laya.Sprite): void {
+        if (!gameBox) return;
+        
+        // 查找场景中所有的驾驶员
+        for (let i = 0; i < gameBox.numChildren; i++) {
+            const child = gameBox.getChildAt(i);
+            if (child instanceof Pilot) {
+                // 暂停每个驾驶员的计时器
+                child.pauseTimer();
+            }
+        }
+        
+        console.log("已暂停所有驾驶员的计时器");
+    }
+    
+    /**
+     * 恢复场景中所有驾驶员的计时器
+     * @param gameBox 游戏容器
+     */
+    public static resumeAllPilots(gameBox: Laya.Sprite): void {
+        if (!gameBox) return;
+        
+        // 查找场景中所有的驾驶员
+        for (let i = 0; i < gameBox.numChildren; i++) {
+            const child = gameBox.getChildAt(i);
+            if (child instanceof Pilot) {
+                // 恢复每个驾驶员的计时器
+                child.resumeTimer();
+            }
+        }
+        
+        console.log("已恢复所有驾驶员的计时器");
+    }
+    
+    /**
+     * 重置场景中所有驾驶员的计时器为完整的6秒
+     * @param gameBox 游戏容器
+     */
+    public static resetAllPilotsTimer(gameBox: Laya.Sprite): void {
+        if (!gameBox) return;
+        
+        // 查找场景中所有的驾驶员
+        for (let i = 0; i < gameBox.numChildren; i++) {
+            const child = gameBox.getChildAt(i);
+            if (child instanceof Pilot) {
+                // 重置每个驾驶员的计时器
+                (child as Pilot).resetTimer();
+            }
+        }
+        
+        console.log("已重置所有驾驶员的计时器为6秒");
+    }
 } 
