@@ -23,6 +23,13 @@ declare const wx: {
         onClose: (callback: (res?: { isEnded?: boolean }) => void) => void;
         offClose: () => void;
     };
+    shareAppMessage: (options: {
+        title: string;
+        desc?: string;
+        imageUrl?: string;
+        success?: () => void;
+        fail?: (error: any) => void;
+    }) => void;
 };
 
 // 段位系统配置
@@ -1208,6 +1215,9 @@ export class RescueModeGame extends Laya.Script {
                     this.rescuedPilots++;
                     this.updatePilotDisplay();
                     
+                    // 立即检查军衔晋升 - 提供及时的体验反馈
+                    this.checkRankPromotion();
+                    
                     // 触发救援效果（对象池会自动处理回收）
                     pilot.rescue();
                 }
@@ -1220,6 +1230,19 @@ export class RescueModeGame extends Laya.Script {
         const dy = bullet.y - enemy.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         return distance < 20; // 使用20像素的碰撞范围
+    }
+
+    /**
+     * 检查军衔晋升 - 可在任何时候调用，提供及时的体验反馈
+     */
+    private checkRankPromotion(): void {
+        const currentRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
+        if (currentRank !== this.initialRank) {
+            // 使用渐隐通知显示军衔晋升，不打断游戏体验
+            this.popupPanel.showFadeNotification(`🎉 你晋升至${currentRank}！`, 4000, "#FFD700");
+            // 更新初始军衔记录
+            this.initialRank = currentRank;
+        }
     }
 
     private handleGameOver(): void {
@@ -1251,6 +1274,11 @@ export class RescueModeGame extends Laya.Script {
         // 1. 设置一个标志，表示坦克已经"死亡"
         this.isPlayerDead = true;
         
+        // 玩家死亡时显示home按钮
+        if (this.homeBtn) {
+            this.homeBtn.visible = true;
+        }
+        
         // 2. 可以选择隐藏坦克，但不是必须的
         this.tank.visible = false;
         
@@ -1259,30 +1287,8 @@ export class RescueModeGame extends Laya.Script {
             this.scatterRescuedPilots(tankX, tankY);
         }
 
-        // 检查军衔晋升
-        const currentRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
-        if (currentRank !== this.initialRank) {
-            // 显示晋升弹框，并在回调中继续游戏流程
-            this.popupPanel.show("可喜可贺！", (container: Laya.Sprite) => {
-                // 创建晋升文本
-                const promoteText = new Laya.Text();
-                promoteText.text = `你成功晋升至${currentRank}！`;
-                promoteText.fontSize = 24;
-                promoteText.color = "#333333";
-                promoteText.width = 400;
-                promoteText.align = "center";
-                promoteText.y = 120;
-                container.addChild(promoteText);
-            }, {
-                width: 400,
-                height: 400,
-                backgroundColor: "rgba(255, 255, 255, 0.5)",
-                onClose: () => {
-                    // 更新初始军衔记录
-                    this.initialRank = currentRank;
-                }
-            });
-        }
+        // 检查军衔晋升 - 使用渐隐通知，不打断游戏
+        this.checkRankPromotion();
         
         // 直接显示倒计时，不再显示结算面板
         this.showCountdown();
@@ -1667,9 +1673,10 @@ export class RescueModeGame extends Laya.Script {
                             countdownTimerId = -1;
                         }
                         
-                        // 移除倒计时和复活按钮
+                        // 移除倒计时、复活按钮和分享按钮
                         countdownContainer.destroy();
                         reviveButton.destroy();
+                        shareButton.destroy();
                         
                         // 复活玩家
                         this.revivePlayer();
@@ -1694,15 +1701,114 @@ export class RescueModeGame extends Laya.Script {
                     countdownTimerId = -1;
                 }
                 
-                // 移除倒计时和复活按钮
+                // 移除倒计时、复活按钮和分享按钮
                 countdownContainer.destroy();
                 reviveButton.destroy();
+                shareButton.destroy();
                 
                 // 复活玩家
                 this.revivePlayer();
             }
         });
+
+        // 创建分享按钮容器
+        const shareButton = new Laya.Sprite();
+        shareButton.name = "ShareButton";
+        shareButton.zOrder = 1003;
         
+        // 设置分享按钮位置 - 在复活按钮右侧，增加间距到100像素避免连接
+        shareButton.pos(Laya.stage.width * 0.75 + 200, Laya.stage.height * 0.5);
+        this.owner.addChild(shareButton);
+
+        // 创建分享按钮背景 - 使用橙色主题与复活按钮区别，调整尺寸
+        const shareBg = new Laya.Sprite();
+        // 先绘制阴影
+        shareBg.graphics.drawRect(-67, 2, 134, 104, "rgba(0,0,0,0.1)");
+        // 再绘制橙色圆角背景 - 稍微缩小避免视觉连接
+        shareBg.graphics.drawPath(-65, 0, [
+            ["moveTo", 10, 0],
+            ["lineTo", 124, 0],
+            ["arcTo", 134, 0, 134, 10, 10],
+            ["lineTo", 134, 90],
+            ["arcTo", 134, 100, 124, 100, 10],
+            ["lineTo", 10, 100],
+            ["arcTo", 0, 100, 0, 90, 10],
+            ["lineTo", 0, 10],
+            ["arcTo", 0, 0, 10, 0, 10],
+            ["closePath"]
+        ], {fillStyle: "#FF9966"}); // 淡橙色背景
+        
+        // 设置分享按钮的轴心点 - 将Y轴轴心点设在按钮中心
+        shareButton.pivot(34, 50);
+        shareButton.addChild(shareBg);
+
+        // 添加分享图标 - 使用share.png图片
+        const shareIcon = new Laya.Image();
+        shareIcon.skin = "resources/share.png";
+        shareIcon.width = 36;
+        shareIcon.height = 36;
+        shareIcon.pos(-55, 32);  // 图标位置
+        shareButton.addChild(shareIcon);
+
+        // 添加分享文本
+        const shareText = new Laya.Text();
+        shareText.text = "分享";
+        shareText.fontSize = 28;
+        shareText.color = "#FFFFFF";
+        shareText.width = 70; 
+        shareText.height = 100;
+        shareText.align = "left"; 
+        shareText.valign = "middle";
+        shareText.pos(-10, 0);  // 文字位置，在图标右侧
+        shareButton.addChild(shareText);
+
+        // 设置分享按钮点击区域
+        const shareHitArea = new Laya.HitArea();
+        shareHitArea.hit.drawRect(-65, 0, 134, 100, "#000000");
+        shareButton.hitArea = shareHitArea;
+        shareButton.mouseEnabled = true;
+
+        // 添加分享按钮触摸事件
+        shareButton.on(Laya.Event.MOUSE_DOWN, this, () => {
+            shareBg.alpha = 0.85;
+            Laya.Tween.to(shareButton, { scaleX: 0.95, scaleY: 0.95 }, 100, null, null, 0, true, true);
+        });
+        shareButton.on(Laya.Event.MOUSE_UP, this, () => {
+            shareBg.alpha = 1;
+            Laya.Tween.to(shareButton, { scaleX: 1, scaleY: 1 }, 100, null, null, 0, true, true);
+        });
+        shareButton.on(Laya.Event.MOUSE_OUT, this, () => {
+            shareBg.alpha = 1;
+            shareButton.scale(1, 1);
+        });
+
+        // 分享按钮点击事件
+        shareButton.on(Laya.Event.CLICK, this, () => {
+            // 播放点击音效
+            Laya.SoundManager.playSound("resources/click.mp3", 1);
+            
+            // 在微信环境中调用分享API
+            if (typeof wx !== 'undefined') {
+                try {
+                    wx.shareAppMessage({
+                        title: `我拯救了${this.rescuedPilots}名战士！你能挑战我吗？`,
+                        imageUrl: "resources/endless_mode.png", // 可以设置分享图片
+                        success: () => {
+                            console.log("分享成功");
+                            // this.popupPanel.showFadeNotification("分享成功！", 2000, "#00CC00");
+                        },
+                        fail: (error: any) => {
+                            console.log("分享失败", error);
+                        }
+                    });
+                } catch (e) {
+                    console.log("分享API调用失败", e);
+                }
+            } else {
+                console.log("非微信环境，显示分享模拟");
+            }
+        });
+
         // 开始倒计时
         let countdown = 7;
         const updateCountdown = () => {
@@ -1734,9 +1840,10 @@ export class RescueModeGame extends Laya.Script {
                     countdownTimerId = -1;
                 }
                 
-                // 移除倒计时容器和复活按钮
+                // 移除倒计时容器、复活按钮和分享按钮
                 countdownContainer.destroy();
                 reviveButton.destroy();
+                shareButton.destroy();
                 
                 // 重置游戏
                 this.resetGame();
@@ -1757,6 +1864,11 @@ export class RescueModeGame extends Laya.Script {
         
         // 重置玩家死亡状态
         this.isPlayerDead = false;
+        
+        // 复活时隐藏home按钮（因为游戏继续）
+        if (this.homeBtn) {
+            this.homeBtn.visible = false;
+        }
         
         // 保持当前皮肤不变，因为玩家完整观看了广告
         // 注意：不重置currentTankSkin，保持之前的高级皮肤
@@ -1803,6 +1915,11 @@ export class RescueModeGame extends Laya.Script {
         
         // 重置玩家死亡状态
         this.isPlayerDead = false;
+        
+        // 重置游戏时隐藏home按钮
+        if (this.homeBtn) {
+            this.homeBtn.visible = false;
+        }
         
         // 重置为初始皮肤（因为玩家未完整观看广告）
         const initialSkin = PlayerTankSkinUtil.getInstance().getPlayerSkin(0);
@@ -2014,46 +2131,43 @@ export class RescueModeGame extends Laya.Script {
         messageContainer.zOrder = 2000;
         this.gameBox.addChild(messageContainer);
         
-        // 设置面板尺寸
-        const panelWidth = 280;
-        const panelHeight = 70;
+        // 设置面板尺寸 - 恢复老版大小
+        const panelWidth = 300;
+        const panelHeight = 80;
         
-        // 简化背景 - 只用一次绘制，避免多层渲染
+        // 简化背景 - 只用一次绘制，避免多层渲染，但恢复老版样式
         const bg = new Laya.Sprite();
         bg.graphics.clear(); // 确保清空
-        // 先绘制填充，再绘制边框，避免重叠问题
-        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(255, 255, 255, 0.9)"); // 白色半透明背景
+        // 先绘制填充，再绘制边框，避免重叠问题 - 恢复老版的深色背景
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0, 0, 0, 0.6)"); // 恢复深色半透明背景
         bg.graphics.drawRect(1, 1, panelWidth-2, panelHeight-2, null, "#FFD700", 2); // 黄色边框，内缩1像素避免重叠
         messageContainer.addChild(bg);
         
-        // 创建标题 - 简化样式
+        // 创建标题 - 恢复老版样式
         const title = new Laya.Text();
         title.text = "坦克升级！";
-        title.fontSize = 20;
+        title.fontSize = 22; // 恢复老版字体大小
         title.color = "#FFD700";
-        title.bold = true;
-        title.width = panelWidth;
-        title.height = 25;
+        title.width = 280;
+        title.height = 30;
         title.align = "center";
-        title.valign = "middle";
-        title.pos(0, 8);
+        title.pos(10, 10); // 恢复老版位置
         messageContainer.addChild(title);
         
-        // 创建描述 - 简化样式
+        // 创建描述 - 恢复老版样式
         const desc = new Laya.Text();
         desc.text = `已获得 ${levelName} 坦克`;
-        desc.fontSize = 14;
-        desc.color = "#333333";
-        desc.width = panelWidth;
-        desc.height = 20;
+        desc.fontSize = 16; // 恢复老版字体大小
+        desc.color = "#FFFFFF"; // 恢复白色字体
+        desc.width = 280;
+        desc.height = 40;
         desc.align = "center";
-        desc.valign = "middle";
-        desc.pos(0, 35);
+        desc.pos(10, 40); // 恢复老版位置
         messageContainer.addChild(desc);
         
         // 设置位置 - 居中显示
         messageContainer.pivot(panelWidth / 2, panelHeight / 2);
-        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 80);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100); // 恢复老版位置
         
         // 简化动画 - 只用淡入淡出，避免缩放导致的渲染问题
         messageContainer.alpha = 0;
@@ -2095,46 +2209,43 @@ export class RescueModeGame extends Laya.Script {
         messageContainer.zOrder = 2000;
         this.gameBox.addChild(messageContainer);
         
-        // 设置面板尺寸
-        const panelWidth = 280;
-        const panelHeight = 70;
+        // 设置面板尺寸 - 恢复老版大小
+        const panelWidth = 300;
+        const panelHeight = 80;
         
-        // 简化背景 - 只用一次绘制，避免多层渲染
+        // 简化背景 - 只用一次绘制，避免多层渲染，但恢复老版样式
         const bg = new Laya.Sprite();
         bg.graphics.clear(); // 确保清空
-        // 先绘制填充，再绘制边框，避免重叠问题
-        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(255, 255, 255, 0.9)"); // 白色半透明背景
+        // 先绘制填充，再绘制边框，避免重叠问题 - 恢复老版的深色背景
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0, 0, 0, 0.6)"); // 恢复深色半透明背景
         bg.graphics.drawRect(1, 1, panelWidth-2, panelHeight-2, null, "#FFD700", 2); // 黄色边框，内缩1像素避免重叠
         messageContainer.addChild(bg);
         
-        // 创建标题 - 简化样式
+        // 创建标题 - 恢复老版样式
         const titleText = new Laya.Text();
         titleText.text = title;
-        titleText.fontSize = 20;
+        titleText.fontSize = 22; // 恢复老版字体大小
         titleText.color = "#FFD700";
-        titleText.bold = true;
-        titleText.width = panelWidth;
-        titleText.height = 25;
+        titleText.width = 280;
+        titleText.height = 30;
         titleText.align = "center";
-        titleText.valign = "middle";
-        titleText.pos(0, 8);
+        titleText.pos(10, 10); // 恢复老版位置
         messageContainer.addChild(titleText);
         
-        // 创建描述 - 简化样式
+        // 创建描述 - 恢复老版样式
         const descText = new Laya.Text();
         descText.text = desc;
-        descText.fontSize = 14;
-        descText.color = "#333333";
-        descText.width = panelWidth;
-        descText.height = 20;
+        descText.fontSize = 16; // 恢复老版字体大小
+        descText.color = "#FFFFFF"; // 恢复白色字体
+        descText.width = 280;
+        descText.height = 40;
         descText.align = "center";
-        descText.valign = "middle";
-        descText.pos(0, 35);
+        descText.pos(10, 40); // 恢复老版位置
         messageContainer.addChild(descText);
         
         // 设置位置 - 居中显示
         messageContainer.pivot(panelWidth / 2, panelHeight / 2);
-        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 80);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100); // 恢复老版位置
         
         // 简化动画 - 只用淡入淡出，避免缩放导致的渲染问题
         messageContainer.alpha = 0;
@@ -2275,9 +2386,16 @@ export class RescueModeGame extends Laya.Script {
         
         this.homeBtn = btnContainer;
         this.owner.addChild(this.homeBtn);
+        
+        // 游戏开始时隐藏home按钮，只有玩家死亡后才显示
+        this.homeBtn.visible = false;
     }
 
     private destroyGame(): void {
+        // 重置敌方坦克状态，避免影响其他模式
+        EnemyTank.updateSpeedStatus(false);
+        EnemyTank.setGameActive(true);
+        
         // 停止所有计时器
         Laya.timer.clearAll(this);
         

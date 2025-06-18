@@ -153,6 +153,10 @@ export class EndlessModeGame extends Laya.Script {
         Laya.stage.alignV = Laya.Stage.ALIGN_MIDDLE;
         Laya.stage.screenMode = Laya.Stage.SCREEN_HORIZONTAL;
         
+        // 重置敌方坦克状态 - 修复从救援模式切换过来时AI坦克不动的bug
+        EnemyTank.updateSpeedStatus(false); // 无尽模式使用正常速度
+        EnemyTank.setGameActive(true); // 确保游戏激活状态
+        
         // 初始化弹窗组件
         try {
             this.popupPanel = this.owner.addComponent(PopupPanel);
@@ -1137,6 +1141,11 @@ export class EndlessModeGame extends Laya.Script {
         // 彻底禁用碰撞检测，而不是移动坦克
         this.isPlayerDead = true;
         
+        // 玩家死亡时显示home按钮
+        if (this.homeBtn) {
+            this.homeBtn.visible = true;
+        }
+        
         // 隐藏坦克
         this.tank.visible = false;
         
@@ -1283,7 +1292,7 @@ export class EndlessModeGame extends Laya.Script {
                 });
                 
                 // 监听广告关闭事件
-                this.videoAd.onClose(res => {
+                this.videoAd.onClose((res?: { isEnded?: boolean }) => {
                     // 取消监听，避免多次触发
                     this.videoAd.offClose();
                     console.log("广告关闭", res);
@@ -1384,6 +1393,11 @@ export class EndlessModeGame extends Laya.Script {
         // 重置玩家死亡状态
         this.isPlayerDead = false;
         
+        // 复活时隐藏home按钮（因为游戏继续）
+        if (this.homeBtn) {
+            this.homeBtn.visible = false;
+        }
+        
         // 重新激活敌方坦克
         EnemyTank.setGameActive(true);
         
@@ -1417,6 +1431,11 @@ export class EndlessModeGame extends Laya.Script {
         
         // 重置玩家死亡状态
         this.isPlayerDead = false;
+        
+        // 重置游戏时隐藏home按钮
+        if (this.homeBtn) {
+            this.homeBtn.visible = false;
+        }
         
         // 重新激活敌方坦克
         EnemyTank.setGameActive(true);
@@ -1635,6 +1654,9 @@ export class EndlessModeGame extends Laya.Script {
         
         this.homeBtn = btnContainer;
         this.owner.addChild(this.homeBtn);
+        
+        // 游戏开始时隐藏home按钮，只有玩家死亡后才显示
+        this.homeBtn.visible = false;
     }
 
     private destroyGame(): void {

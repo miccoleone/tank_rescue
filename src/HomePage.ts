@@ -590,7 +590,7 @@ export class HomePage extends Laya.Script {
      */
     private showRescueModeLockedTip(): void {
         const unlockRankName = RescueModeUnlockManager.instance.getUnlockRankName();
-        this.popupPanel.showMessage(`救援模式尚未解锁\n\n在无尽模式中达到${unlockRankName}表现将解锁救援模式`);
+        this.popupPanel.showMessage(`无尽模式中达到${unlockRankName}表现将解锁救援模式`,"未解锁");
     }
 
     /**

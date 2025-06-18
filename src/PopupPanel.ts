@@ -291,9 +291,10 @@ export class PopupPanel extends Laya.Script {
     /**
      * 显示简单消息弹窗
      * @param message 消息内容
+     * @param title 弹窗标题（可选，默认为"提示"）
      */
-    showMessage(message: string): void {
-        this.show("提示", (container) => {
+    showMessage(message: string, title: string = "提示"): void {
+        this.show(title, (container) => {
             const text = new Laya.Text();
             text.text = message;
             text.fontSize = 20;
@@ -307,7 +308,6 @@ export class PopupPanel extends Laya.Script {
             
         }, { width: 350, height: 250 });
     }
-
     /**
      * 显示渐隐式提示消息（不阻碍游戏操作）
      * @param message 消息内容
