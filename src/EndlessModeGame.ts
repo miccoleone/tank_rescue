@@ -11,6 +11,8 @@ import { SceneManager } from "./SceneManager";
 import { TutorialManager } from "./TutorialManager";
 import { FireButton } from "./FireButton";
 import { ScoreUtil } from "./ScoreUtil";
+import { RescueModeUnlockManager } from "./RescueModeUnlockManager";
+import { PopupPanel } from "./PopupPanel";
 
 // 添加微信小游戏API的类型声明
 declare const wx: {
@@ -36,8 +38,8 @@ export class EndlessModeGame extends Laya.Script {
     private static readonly MIN_BOX_COUNT = 15; // 最小箱子数量
     private static readonly BOX_CHECK_INTERVAL = 2000; // 检查箱子数量的间隔（毫秒）
     private static readonly POINTS_PER_RANK = 3000; // 每个小段位所需分数
-    private static readonly ENEMY_TANK_SCORE = 100; // 击毁敌方坦克得分
-    private static readonly PILOT_RESCUE_SCORE = 1000; // 救援驾驶员的得分
+    private static readonly ENEMY_TANK_SCORE = 500; // 击毁敌方坦克得分
+    private static readonly PILOT_RESCUE_SCORE = 5000; // 救援驾驶员的得分
     private static readonly INVINCIBLE_DURATION = 5000; // 无敌时间5秒
     
     // 段位系统定义
@@ -104,6 +106,13 @@ export class EndlessModeGame extends Laya.Script {
     private isPlayerDead: boolean = false;
     private currentCountdownContainer: Laya.Sprite = null;
     
+    // 弹窗组件
+    private popupPanel: PopupPanel;
+    
+    // 移速相关
+    private currentMoveSpeed: number = 3.0; // 当前移速
+    private lastMoveSpeedLevel: number = 0; // 上次移速等级，用于检测提升
+    
     constructor() {
         super();
         // 预加载音效和图片
@@ -143,6 +152,13 @@ export class EndlessModeGame extends Laya.Script {
         Laya.stage.alignH = Laya.Stage.ALIGN_CENTER;
         Laya.stage.alignV = Laya.Stage.ALIGN_MIDDLE;
         Laya.stage.screenMode = Laya.Stage.SCREEN_HORIZONTAL;
+        
+        // 初始化弹窗组件
+        try {
+            this.popupPanel = this.owner.addComponent(PopupPanel);
+        } catch (e) {
+            console.error("初始化弹窗组件失败:", e);
+        }
         
         // 初始化驾驶员对象池
         PilotPool.instance;
@@ -292,8 +308,8 @@ export class EndlessModeGame extends Laya.Script {
         // 更新坦克旋转角度
         this.tank.rotation = angle;
         
-        // 计算移动距离
-        let speed = 3 * strength;
+        // 计算移动距离，使用动态移速
+        let speed = this.currentMoveSpeed * strength;
         let radian = angle * Math.PI / 180;
         
         // 计算新位置
@@ -376,7 +392,7 @@ export class EndlessModeGame extends Laya.Script {
         bullet.rotation = this.tank.rotation;
         
         // 计算基础速度和段位加成
-        let baseSpeed = 12;
+        let baseSpeed = 10;
         const currentRankInfo = this.getRankInfo(this.score);
         const rankBonus = Math.floor(Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK) / 4) * 1; // 每个大段位（4个小段位）增加1点速度
         let speed = baseSpeed + rankBonus;
@@ -558,6 +574,10 @@ export class EndlessModeGame extends Laya.Script {
             this.updateRankDisplay();
             // 更新排行榜数据
             LeaderboardManager.instance.updateCurrentScore(this.score);
+            // 检查救援模式解锁
+            this.checkRescueModeUnlock();
+            // 检查移速提升
+            this.checkMoveSpeedUp();
         }
     }
 
@@ -660,6 +680,93 @@ export class EndlessModeGame extends Laya.Script {
         } else {
             this.lastRankIndex = EndlessModeGame.RANKS.findIndex(r => r.name === rankInfo.rankName);
         }
+    }
+
+    /**
+     * 计算当前移速
+     */
+    private calculateMoveSpeed(): number {
+        const currentLevel = Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK);
+        
+        // 根据段位等级计算移速 - 重新设计梯度：基础3，最高5
+        if (currentLevel >= 21) {
+            // 长城段位（21级及以上）：移速 5.0（最高）
+            return 5.0;
+        } else if (currentLevel >= 17) {
+            // 王者段位（17-20级）：移速 4.8
+            return 4.8;
+        } else if (currentLevel >= 13) {
+            // 钻石段位（13-16级）：移速 4.5
+            return 4.5;
+        } else if (currentLevel >= 9) {
+            // 黄金段位（9-12级）：移速 4.0
+            return 4.0;
+        } else if (currentLevel >= 7) {
+            // 白银后期（7-8级）：移速 3.5
+            return 3.5;
+        } else if (currentLevel >= 5) {
+            // 白银前期（5-6级）：移速 3.2
+            return 3.2;
+        } else if (currentLevel >= 3) {
+            // 青铜后期（3-4级）：移速 3.1
+            return 3.1;
+        } else {
+            // 青铜前期（1-2级）：移速 3.0（基础）
+            return 3.0;
+        }
+    }
+
+    /**
+     * 检查移速提升
+     */
+    private checkMoveSpeedUp(): void {
+        const newMoveSpeed = this.calculateMoveSpeed();
+        const currentLevel = Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK);
+        
+        // 检查是否有移速提升
+        if (newMoveSpeed > this.currentMoveSpeed) {
+            this.currentMoveSpeed = newMoveSpeed;
+            this.lastMoveSpeedLevel = currentLevel;
+            
+            // 显示移速提升提示
+            if (this.popupPanel) {
+                this.popupPanel.showFadeNotification("移速++", 2000, "#00FF7F");
+            }
+        }
+    }
+
+    /**
+     * 检查救援模式解锁
+     */
+    private checkRescueModeUnlock(): void {
+        const unlockManager = RescueModeUnlockManager.instance;
+        
+        // 如果救援模式已经解锁，不需要再检查
+        if (unlockManager.isRescueModeUnlocked()) {
+            return;
+        }
+        
+        // 检查分数是否达到解锁要求
+        if (unlockManager.checkScoreForUnlock(this.score)) {
+            // 解锁救援模式
+            unlockManager.unlockRescueMode();
+            
+            // 如果还没有通知过解锁，显示解锁弹窗
+            if (!unlockManager.hasNotifiedUnlock()) {
+                unlockManager.markUnlockNotified();
+                this.showRescueModeUnlockPopup();
+            }
+        }
+    }
+
+    /**
+     * 显示救援模式解锁提示
+     */
+    private showRescueModeUnlockPopup(): void {
+        if (!this.popupPanel) return;
+        
+        // 使用渐隐提示，不阻碍游戏操作
+        this.popupPanel.showFadeNotification("救援模式已解锁", 4000, "#FFD700");
     }
 
     private initRankUpScores(): void {
@@ -1321,6 +1428,11 @@ export class EndlessModeGame extends Laya.Script {
         this.metalBoxCount = 0;
         this.treasureBoxCount = 0;
         this.rescuedPilots = 0;
+        
+        // 重置移速相关
+        this.currentMoveSpeed = 3.0;
+        this.lastMoveSpeedLevel = 0;
+        
         this.initRankUpScores();
         this.updateScoreDisplay();
         this.updatePilotDisplay();
@@ -1495,8 +1607,8 @@ export class EndlessModeGame extends Laya.Script {
         homeIcon.alpha = 0.9;
         btnContainer.addChild(homeIcon);
         
-        // 使用与开火按钮相同的水平位置
-        const horizontalMargin = Math.round(Laya.stage.width * 0.17);
+        // 使用与开火按钮接近的水平位置
+        const horizontalMargin = Math.round(Laya.stage.width * 0.18);
         const verticalMargin = 20;
         btnContainer.pos(
             Math.round(Laya.stage.width - horizontalMargin),

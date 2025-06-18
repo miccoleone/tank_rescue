@@ -5,6 +5,7 @@ import { RankConfig } from "./RankConfig";
 import { PopupPanel } from "./PopupPanel";
 import { Achievement, MilitaryRank } from "./Achievement";
 import { TutorialManager } from "./TutorialManager";
+import { RescueModeUnlockManager } from "./RescueModeUnlockManager";
 
 /**
  * 游戏首页
@@ -35,6 +36,9 @@ export class HomePage extends Laya.Script {
     
     onEnable(): void {
         console.log("HomePage onEnable");
+        
+        // 每次启用时检查救援模式解锁状态并更新按钮
+        this.updateRescueModeButtonState();
     }
     
     onAwake(): void {
@@ -61,6 +65,7 @@ export class HomePage extends Laya.Script {
             "resources/save_mode.jpg",
             "resources/stats_icon.png",
             "resources/achievement.png",
+            "resources/lock.png",
         ], Laya.Handler.create(this, () => {
             // 初始化UI
             this.initUI();
@@ -352,33 +357,46 @@ export class HomePage extends Laya.Script {
             endlessMode.scale(1, 1);
         });
         
+        // 检查救援模式是否已解锁
+        const isRescueModeUnlocked = RescueModeUnlockManager.instance.isRescueModeUnlocked();
+        
         // 创建拯救模式按钮
-        const saveMode = this.createModeButton("resources/save_mode.jpg", "拯救模式", true, buttonWidth, buttonHeight);
+        const saveMode = this.createModeButton("resources/save_mode.jpg", "拯救模式", isRescueModeUnlocked, buttonWidth, buttonHeight);
         saveMode.name = "SaveMode";
         saveMode.pos(buttonWidth + buttonSpacing, 0);
         
-        // 添加点击效果 - 确保按钮可点击
+        // 添加点击效果和事件处理
         saveMode.on(Laya.Event.MOUSE_DOWN, this, () => {
-            saveMode.scale(0.95, 0.95);
+            if (isRescueModeUnlocked) {
+                saveMode.scale(0.95, 0.95);
+            }
         });
         
         saveMode.on(Laya.Event.CLICK, this, () => {
-            // 确保点击音效播放并设置音量
+            // 播放点击音效
             const clickSound = Laya.SoundManager.playSound("resources/click.mp3", 1);
             if (clickSound) {
                 clickSound.volume = 1.0;
             }
-            saveMode.scale(1, 1);
             
-            // 延迟一帧再跳转，确保音效播放
-            Laya.timer.frameOnce(1, this, () => {
-                // 跳转到拯救模式场景
-                SceneManager.instance.navigateToScene("RescueModeGame");
-            });
+            // 动态检查当前解锁状态（不使用创建时的变量）
+            const currentUnlockStatus = RescueModeUnlockManager.instance.isRescueModeUnlocked();
+            if (currentUnlockStatus) {
+                // 已解锁，正常跳转
+                saveMode.scale(1, 1);
+                Laya.timer.frameOnce(1, this, () => {
+                    SceneManager.instance.navigateToScene("RescueModeGame");
+                });
+            } else {
+                // 未解锁，显示提示
+                this.showRescueModeLockedTip();
+            }
         });
         
         saveMode.on(Laya.Event.MOUSE_OUT, this, () => {
-            saveMode.scale(1, 1);
+            if (isRescueModeUnlocked) {
+                saveMode.scale(1, 1);
+            }
         });
         
         buttonsContainer.addChild(endlessMode);
@@ -537,6 +555,42 @@ export class HomePage extends Laya.Script {
 
             container.addChild(infoContainer);
         });
+    }
+
+    /**
+     * 更新救援模式按钮状态
+     */
+    private updateRescueModeButtonState(): void {
+        // 查找游戏模式容器和救援模式按钮
+        const modesContainer = this.owner.getChildByName("ModesContainer");
+        if (!modesContainer) return;
+        
+        const buttonsContainer = modesContainer.getChildByName("ButtonsContainer");
+        if (!buttonsContainer) return;
+        
+        const saveMode = buttonsContainer.getChildByName("SaveMode") as Laya.Sprite;
+        if (!saveMode) return;
+        
+        // 检查当前解锁状态
+        const isCurrentlyUnlocked = RescueModeUnlockManager.instance.isRescueModeUnlocked();
+        
+        // 如果状态发生变化，重新创建按钮
+        // 这里简单检查按钮的mouseEnabled属性来判断之前的状态
+        const wasUnlocked = saveMode.mouseEnabled;
+        
+        if (isCurrentlyUnlocked !== wasUnlocked) {
+            console.log(`救援模式按钮状态发生变化: ${wasUnlocked} -> ${isCurrentlyUnlocked}`);
+            // 重新初始化UI以反映新的状态
+            this.initUI();
+        }
+    }
+
+    /**
+     * 显示救援模式未解锁提示
+     */
+    private showRescueModeLockedTip(): void {
+        const unlockRankName = RescueModeUnlockManager.instance.getUnlockRankName();
+        this.popupPanel.showMessage(`救援模式尚未解锁\n\n在无尽模式中达到${unlockRankName}表现将解锁救援模式`);
     }
 
     /**
@@ -718,29 +772,49 @@ export class HomePage extends Laya.Script {
             // btn.addChild(subText);
         }else if (text == "拯救模式") {
             const subText = new Laya.Text();
-            subText.text = "(进阶)";
+            subText.text = enabled ? "(进阶)" : "(未解锁)";
             subText.fontSize = Math.floor(textHeight * 0.18); 
-            subText.color = "#999999";
+            subText.color = enabled ? "#999999" : "#FF6666";
             subText.width = width;
             subText.align = "center";
             subText.y = mainText.y + mainText.fontSize + 7; // 主文字下方
             btn.addChild(subText);
         }
 
+        // 如果按钮未启用，添加锁定效果
+        if (!enabled) {
+            // 添加半透明遮罩
+            const lockOverlay = new Laya.Sprite();
+            lockOverlay.graphics.drawRect(0, 0, width, height, "rgba(0, 0, 0, 0.5)");
+            btn.addChild(lockOverlay);
+            
+            // 添加锁定图标 - 使用图片而不是emoji
+            const lockIcon = new Laya.Image();
+            lockIcon.skin = "resources/lock.png";
+            const iconSize = Math.floor(height * 0.15); // 稍微增大一点
+            lockIcon.width = iconSize;
+            lockIcon.height = iconSize;
+            lockIcon.x = (width - iconSize) / 2; // 水平居中
+            lockIcon.y = (height - iconSize) / 2; // 垂直居中
+            btn.addChild(lockIcon);
+        }
+
         // ======================
         // 4. 交互设置
         // ======================
-        btn.mouseEnabled = enabled;
+        // 始终启用鼠标事件，以便未解锁的按钮也能响应点击
+        btn.mouseEnabled = true;
+        
+        // 精确点击区域（避免边框点击无效）
+        const hitArea = new Laya.HitArea();
+        hitArea.hit.drawRect(0, 0, width, height, "#000000");
+        btn.hitArea = hitArea;
+        
         if (enabled) {
             // 点击动画效果
             btn.on(Laya.Event.MOUSE_DOWN, this, () => btn.scale(0.95, 0.95));
             btn.on(Laya.Event.MOUSE_UP, this, () => btn.scale(1, 1));
             btn.on(Laya.Event.MOUSE_OUT, this, () => btn.scale(1, 1));
-            
-            // 精确点击区域（避免边框点击无效）
-            const hitArea = new Laya.HitArea();
-            hitArea.hit.drawRect(0, 0, width, height, "#000000");
-            btn.hitArea = hitArea;
         }
 
         return btn;

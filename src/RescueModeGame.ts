@@ -39,8 +39,8 @@ export class RescueModeGame extends Laya.Script {
     private static readonly MIN_BOX_COUNT = 15; // 最小箱子数量
     private static readonly BOX_CHECK_INTERVAL = 2000; // 检查箱子数量的间隔（毫秒）
     private static readonly POINTS_PER_RANK = 3000; // 每个小段位所需分数
-    private static readonly ENEMY_TANK_SCORE = 100; // 击毁敌方坦克得分
-    private static readonly PILOT_RESCUE_SCORE = 1000; // 救援驾驶员的得分
+    private static readonly ENEMY_TANK_SCORE = 500; // 击毁敌方坦克得分
+    private static readonly PILOT_RESCUE_SCORE = 500; // 救援驾驶员的得分
     private static readonly INVINCIBLE_DURATION = 5000; // 无敌时间5秒
     
     // 段位系统定义
@@ -470,7 +470,7 @@ export class RescueModeGame extends Laya.Script {
         this.tank.rotation = angle;
         
         // 计算移动距离，基础速度为5，最大不超过7.5（1.5倍）
-        const baseSpeed = 5;
+        const baseSpeed = 4;
         const maxSpeed = baseSpeed * 1.5;
         let speed = baseSpeed * strength;
         speed = Math.min(speed, maxSpeed); // 限制最大速度
@@ -557,13 +557,13 @@ export class RescueModeGame extends Laya.Script {
         bullet.rotation = this.tank.rotation;
         
         // 计算基础速度和段位加成
-        let baseSpeed = 12;
+        let baseSpeed = 10;
         const currentRankInfo = this.getRankInfo(this.score);
         const rankBonus = Math.floor(Math.floor(this.score / RescueModeGame.POINTS_PER_RANK) / 4) * 1; // 每个大段位（4个小段位）增加1点速度
         let speed = baseSpeed + rankBonus;
         
-        // 限制最大速度不超过18
-        speed = Math.min(speed, 18);
+        // 限制最大速度不超过15
+        speed = Math.min(speed, 15);
         
         let vx = Math.cos(radian) * speed;
         let vy = Math.sin(radian) * speed;
@@ -1996,7 +1996,7 @@ export class RescueModeGame extends Laya.Script {
     }
     
     /**
-     * 显示坦克升级消息
+     * 显示坦克升级消息 - 简化版本，避免渲染问题
      */
     private showTankUpgradeMessage(levelName: string): void {
         // 先清理可能存在的旧面板
@@ -2012,58 +2012,60 @@ export class RescueModeGame extends Laya.Script {
         this.currentMessageContainer = messageContainer;
         
         messageContainer.zOrder = 2000;
-        messageContainer.alpha = 0;
         this.gameBox.addChild(messageContainer);
         
         // 设置面板尺寸
-        const panelWidth = 300;
-        const panelHeight = 80;
+        const panelWidth = 280;
+        const panelHeight = 70;
         
-        // 创建消息背景
+        // 简化背景 - 只用一次绘制，避免多层渲染
         const bg = new Laya.Sprite();
-        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0,0,0,0.6)");
-        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, null, "#FFD700", 2);
+        bg.graphics.clear(); // 确保清空
+        // 先绘制填充，再绘制边框，避免重叠问题
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(255, 255, 255, 0.9)"); // 白色半透明背景
+        bg.graphics.drawRect(1, 1, panelWidth-2, panelHeight-2, null, "#FFD700", 2); // 黄色边框，内缩1像素避免重叠
         messageContainer.addChild(bg);
         
-        // 创建标题
+        // 创建标题 - 简化样式
         const title = new Laya.Text();
         title.text = "坦克升级！";
-        title.fontSize = 22;
+        title.fontSize = 20;
         title.color = "#FFD700";
-        title.width = 280;
-        title.height = 30;
+        title.bold = true;
+        title.width = panelWidth;
+        title.height = 25;
         title.align = "center";
-        title.pos(10, 10);
+        title.valign = "middle";
+        title.pos(0, 8);
         messageContainer.addChild(title);
         
-        // 创建描述
+        // 创建描述 - 简化样式
         const desc = new Laya.Text();
         desc.text = `已获得 ${levelName} 坦克`;
-        desc.fontSize = 16;
-        desc.color = "#FFFFFF";
-        desc.width = 280;
-        desc.height = 40;
+        desc.fontSize = 14;
+        desc.color = "#333333";
+        desc.width = panelWidth;
+        desc.height = 20;
         desc.align = "center";
-        desc.pos(10, 40);
+        desc.valign = "middle";
+        desc.pos(0, 35);
         messageContainer.addChild(desc);
         
-        // 设置位置和动画
+        // 设置位置 - 居中显示
         messageContainer.pivot(panelWidth / 2, panelHeight / 2);
-        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 80);
         
-        // 显示动画
+        // 简化动画 - 只用淡入淡出，避免缩放导致的渲染问题
+        messageContainer.alpha = 0;
         Laya.Tween.to(messageContainer, {
-            alpha: 1,
-            scaleX: 1.1,
-            scaleY: 1.1
-        }, 300, Laya.Ease.backOut, Laya.Handler.create(this, () => {
-            // 3秒后隐藏
-            Laya.timer.once(3000, this, () => {
+            alpha: 1
+        }, 300, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
+            // 2秒后隐藏
+            Laya.timer.once(2000, this, () => {
                 if (this.currentMessageContainer === messageContainer && !messageContainer.destroyed) {
                     Laya.Tween.to(messageContainer, {
-                        alpha: 0,
-                        y: messageContainer.y - 50
-                    }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
+                        alpha: 0
+                    }, 400, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
                         if (this.currentMessageContainer === messageContainer) {
                             this.currentMessageContainer = null;
                         }
@@ -2075,7 +2077,7 @@ export class RescueModeGame extends Laya.Script {
     }
 
     /**
-     * 显示庆祝消息 - 复用坦克升级消息的样式
+     * 显示庆祝消息 - 简化版本，与坦克升级提示保持一致
      */
     private showCongratulationMessage(title: string, desc: string): void {
         // 先清理可能存在的旧面板
@@ -2091,58 +2093,60 @@ export class RescueModeGame extends Laya.Script {
         this.currentMessageContainer = messageContainer;
         
         messageContainer.zOrder = 2000;
-        messageContainer.alpha = 0;
         this.gameBox.addChild(messageContainer);
         
         // 设置面板尺寸
-        const panelWidth = 300;
-        const panelHeight = 80;
+        const panelWidth = 280;
+        const panelHeight = 70;
         
-        // 创建消息背景
+        // 简化背景 - 只用一次绘制，避免多层渲染
         const bg = new Laya.Sprite();
-        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0,0,0,0.6)");
-        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, null, "#FFD700", 2);
+        bg.graphics.clear(); // 确保清空
+        // 先绘制填充，再绘制边框，避免重叠问题
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(255, 255, 255, 0.9)"); // 白色半透明背景
+        bg.graphics.drawRect(1, 1, panelWidth-2, panelHeight-2, null, "#FFD700", 2); // 黄色边框，内缩1像素避免重叠
         messageContainer.addChild(bg);
         
-        // 创建标题
+        // 创建标题 - 简化样式
         const titleText = new Laya.Text();
         titleText.text = title;
-        titleText.fontSize = 22;
+        titleText.fontSize = 20;
         titleText.color = "#FFD700";
-        titleText.width = 280;
-        titleText.height = 30;
+        titleText.bold = true;
+        titleText.width = panelWidth;
+        titleText.height = 25;
         titleText.align = "center";
-        titleText.pos(10, 10);
+        titleText.valign = "middle";
+        titleText.pos(0, 8);
         messageContainer.addChild(titleText);
         
-        // 创建描述
+        // 创建描述 - 简化样式
         const descText = new Laya.Text();
         descText.text = desc;
-        descText.fontSize = 16;
-        descText.color = "#FFFFFF";
-        descText.width = 280;
-        descText.height = 40;
+        descText.fontSize = 14;
+        descText.color = "#333333";
+        descText.width = panelWidth;
+        descText.height = 20;
         descText.align = "center";
-        descText.pos(10, 40);
+        descText.valign = "middle";
+        descText.pos(0, 35);
         messageContainer.addChild(descText);
         
-        // 设置位置和动画
+        // 设置位置 - 居中显示
         messageContainer.pivot(panelWidth / 2, panelHeight / 2);
-        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 80);
         
-        // 显示动画
+        // 简化动画 - 只用淡入淡出，避免缩放导致的渲染问题
+        messageContainer.alpha = 0;
         Laya.Tween.to(messageContainer, {
-            alpha: 1,
-            scaleX: 1.1,
-            scaleY: 1.1
-        }, 300, Laya.Ease.backOut, Laya.Handler.create(this, () => {
-            // 3秒后隐藏
-            Laya.timer.once(3000, this, () => {
+            alpha: 1
+        }, 300, Laya.Ease.quadOut, Laya.Handler.create(this, () => {
+            // 2秒后隐藏
+            Laya.timer.once(2000, this, () => {
                 if (this.currentMessageContainer === messageContainer && !messageContainer.destroyed) {
                     Laya.Tween.to(messageContainer, {
-                        alpha: 0,
-                        y: messageContainer.y - 50
-                    }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
+                        alpha: 0
+                    }, 400, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
                         if (this.currentMessageContainer === messageContainer) {
                             this.currentMessageContainer = null;
                         }
@@ -2243,8 +2247,8 @@ export class RescueModeGame extends Laya.Script {
         homeIcon.alpha = 0.9;
         btnContainer.addChild(homeIcon);
         
-        // 使用与开火按钮相同的水平位置
-        const horizontalMargin = Math.round(Laya.stage.width * 0.17);
+        // 使用与开火按钮接近的水平位置
+        const horizontalMargin = Math.round(Laya.stage.width * 0.18);
         const verticalMargin = 20;
         btnContainer.pos(
             Math.round(Laya.stage.width - horizontalMargin),

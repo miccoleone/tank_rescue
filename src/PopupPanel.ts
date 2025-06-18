@@ -302,25 +302,71 @@ export class PopupPanel extends Laya.Script {
             text.x = 20;
             text.y = 20;
             text.wordWrap = true;
+            text.leading = 8;
             container.addChild(text);
             
-            const okBtn = new Laya.Sprite();
-            okBtn.graphics.drawRect(0, 0, 100, 40, "#4CAF50");
-            okBtn.x = (container.width - 100) / 2;
-            okBtn.y = container.height - 70;
-            okBtn.mouseEnabled = true;
-            okBtn.on(Laya.Event.CLICK, this, this.hide);
-            
-            const okText = new Laya.Text();
-            okText.text = "确定";
-            okText.fontSize = 20;
-            okText.color = "#FFFFFF";
-            okText.width = 100;
-            okText.align = "center";
-            okText.y = 10;
-            okBtn.addChild(okText);
-            
-            container.addChild(okBtn);
-        }, { width: 300, height: 200 });
+        }, { width: 350, height: 250 });
+    }
+
+    /**
+     * 显示渐隐式提示消息（不阻碍游戏操作）
+     * @param message 消息内容
+     * @param duration 显示持续时间（毫秒），默认3000ms
+     * @param color 文字颜色，默认为金色
+     */
+    showFadeNotification(message: string, duration: number = 3000, color: string = "#FFD700"): void {
+        // 创建消息容器
+        const messageContainer = new Laya.Sprite();
+        messageContainer.zOrder = 2000;
+        messageContainer.alpha = 0;
+        this.owner.addChild(messageContainer);
+        
+        // 设置面板尺寸
+        const panelWidth = 300;
+        const panelHeight = 80;
+        
+        // 创建消息背景
+        const bg = new Laya.Sprite();
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, "rgba(0,0,0,0.6)");
+        bg.graphics.drawRect(0, 0, panelWidth, panelHeight, null, color, 2);
+        messageContainer.addChild(bg);
+        
+        // 创建消息文本
+        const messageText = new Laya.Text();
+        messageText.text = message;
+        messageText.fontSize = 22;
+        messageText.color = color;
+        messageText.width = panelWidth - 20;
+        messageText.height = panelHeight - 20;
+        messageText.align = "center";
+        messageText.valign = "middle";
+        messageText.pos(10, 10);
+        messageText.wordWrap = true;
+        messageContainer.addChild(messageText);
+        
+        // 设置位置和动画
+        messageContainer.pivot(panelWidth / 2, panelHeight / 2);
+        messageContainer.pos(Laya.stage.width / 2, Laya.stage.height / 2 - 100);
+        
+        // 显示动画
+        Laya.Tween.to(messageContainer, {
+            alpha: 1,
+            scaleX: 1.1,
+            scaleY: 1.1
+        }, 300, Laya.Ease.backOut, Laya.Handler.create(this, () => {
+            // 持续时间后隐藏
+            Laya.timer.once(duration, this, () => {
+                if (!messageContainer.destroyed) {
+                    Laya.Tween.to(messageContainer, {
+                        alpha: 0,
+                        y: messageContainer.y - 50
+                    }, 500, Laya.Ease.quadIn, Laya.Handler.create(this, () => {
+                        if (!messageContainer.destroyed) {
+                            messageContainer.destroy();
+                        }
+                    }));
+                }
+            });
+        }));
     }
 } 
