@@ -21,6 +21,15 @@ declare const wx: {
         load: () => Promise<any>;
         onClose: (callback: (res?: { isEnded?: boolean }) => void) => void;
         offClose: () => void;
+        onError: (callback: (err: any) => void) => void;
+        onLoad: (callback: () => void) => void;
+    };
+    createInterstitialAd: (options: { adUnitId: string }) => {
+        show: () => Promise<any>;
+        onClose: (callback: (res?: { isEnded?: boolean }) => void) => void;
+        offClose: () => void;
+        onError: (callback: (err: any) => void) => void;
+        onLoad: (callback: () => void) => void;
     };
 };
 
@@ -103,8 +112,11 @@ export class EndlessModeGame extends Laya.Script {
     
     // 添加视频广告实例
     private videoAd: any;
+    // 添加插屏广告实例
+    private interstitialAd: any;
     private isPlayerDead: boolean = false;
     private currentCountdownContainer: Laya.Sprite = null;
+    private isGamePaused: boolean = false;
     
     // 弹窗组件
     private popupPanel: PopupPanel;
@@ -199,6 +211,7 @@ export class EndlessModeGame extends Laya.Script {
 
         // 在末尾添加广告初始化
         this.initRewardedVideoAd();
+        this.initInterstitialAd();
     }
 
     private initGameScene(): void {
@@ -1149,8 +1162,13 @@ export class EndlessModeGame extends Laya.Script {
         // 隐藏坦克
         this.tank.visible = false;
         
-        // 直接显示倒计时
-        this.showCountdown();
+        // 立即显示插屏广告
+        this.showInterstitialAd();
+        
+        // 延迟显示倒计时，给插屏广告留出时间
+        Laya.timer.once(100, this, () => {
+            this.showCountdown();
+        });
     }
 
     // 添加倒计时显示方法
@@ -1627,7 +1645,7 @@ export class EndlessModeGame extends Laya.Script {
         btnContainer.addChild(homeIcon);
         
         // 使用与开火按钮接近的水平位置
-        const horizontalMargin = Math.round(Laya.stage.width * 0.18);
+        const horizontalMargin = Math.round(Laya.stage.width * 0.18) + 20;
         const verticalMargin = 20;
         btnContainer.pos(
             Math.round(Laya.stage.width - horizontalMargin),
@@ -1761,6 +1779,111 @@ export class EndlessModeGame extends Laya.Script {
             } catch (e) {
                 console.error('微信广告初始化失败', e);
             }
+        }
+    }
+
+    // 初始化插屏广告
+    private initInterstitialAd(): void {
+        if (typeof wx !== 'undefined' && wx.createInterstitialAd) {
+            try {
+                // 创建插屏广告实例，提前初始化
+                this.interstitialAd = wx.createInterstitialAd({
+                    adUnitId: 'adunit-6988b01b1b393bed'
+                });
+                
+                // 设置错误处理函数
+                this.interstitialAd.onError((err: any) => {
+                    console.error('插屏广告错误:', err);
+                });
+                
+                // 设置广告加载成功回调
+                this.interstitialAd.onLoad(() => {
+                    console.log('插屏广告加载成功');
+                });
+                
+                console.log('插屏广告初始化成功');
+            } catch (e) {
+                console.error('插屏广告初始化失败', e);
+            }
+        }
+    }
+
+    // 显示插屏广告
+    private showInterstitialAd(): void {
+        if (this.interstitialAd && typeof wx !== 'undefined') {
+            console.log("正在显示插屏广告...");
+            
+            // 暂停游戏逻辑
+            this.pauseGameLogic();
+            
+            // 显示插屏广告
+            this.interstitialAd.show().catch((err: any) => {
+                console.error('插屏广告显示失败:', err);
+                // 广告显示失败，直接恢复游戏
+                this.resumeGameLogic();
+            });
+            
+            // 监听广告关闭事件
+            this.interstitialAd.onClose((res?: { isEnded?: boolean }) => {
+                // 取消监听，避免多次触发
+                this.interstitialAd.offClose();
+                console.log("插屏广告关闭", res);
+                
+                // 无论广告是否完整观看，都恢复游戏
+                this.resumeGameLogic();
+            });
+        } else {
+            console.log("非微信环境或插屏广告未初始化");
+        }
+    }
+
+    /**
+     * 暂停游戏逻辑
+     */
+    private pauseGameLogic(): void {
+        if (this.isGamePaused) {
+            return; // 如果已经暂停，则忽略
+        }
+
+        console.log("游戏逻辑暂停");
+        this.isGamePaused = true;
+        
+        // 暂停所有计时器
+        Laya.timer.pause();
+        
+        // 暂停背景音乐
+        if (this.bgMusic) {
+            this.bgMusic.pause();
+        }
+        
+        // 暂停游戏相关的动画（通过设置游戏容器的透明度来实现）
+        if (this.gameBox) {
+            this.gameBox.alpha = 0.5; // 降低透明度表示暂停状态
+        }
+    }
+
+    /**
+     * 恢复游戏逻辑
+     */
+    private resumeGameLogic(): void {
+        if (!this.isGamePaused) {
+            return; // 如果已经恢复，则忽略
+        }
+
+        console.log("游戏逻辑恢复");
+        this.isGamePaused = false;
+        
+        // 恢复所有计时器
+        Laya.timer.resume();
+        
+        // 恢复背景音乐
+        if (this.bgMusic) {
+            this.bgMusic.resume();
+        }
+        
+        // 恢复游戏相关的动画
+        if (this.gameBox) {
+            this.gameBox.alpha = 1; // 恢复正常透明度
         }
     }
 } 
