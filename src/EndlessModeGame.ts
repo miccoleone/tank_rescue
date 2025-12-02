@@ -110,11 +110,12 @@ export class EndlessModeGame extends Laya.Script {
     
     private backgroundTiles: Laya.Sprite[] = [];
     
-    // 添加视频广告实例
     private videoAd: any;
     // 添加插屏广告实例
     private interstitialAd: any;
     private isPlayerDead: boolean = false;
+    private isFiring: boolean = false; // 开火状态标志
+    private currentJoystickAngle: number = -90; // 当前摇杆角度
     private currentCountdownContainer: Laya.Sprite = null;
     private isGamePaused: boolean = false;
     
@@ -269,6 +270,10 @@ export class EndlessModeGame extends Laya.Script {
         this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
         this.gameBox.addChild(this.tank);
 
+        // 将滤镜直接应用于持有纹理的Image对象
+        const glowFilter = new Laya.GlowFilter("#ffff00", 5, 0, 0);
+        tankImage.filters = [glowFilter];
+
         // 创建无敌效果
         this.createInvincibleEffect();
         // 激活无敌状态
@@ -322,8 +327,13 @@ export class EndlessModeGame extends Laya.Script {
 
         if (strength === 0 || !this.tank || this.tank.destroyed) return;
         
-        // 更新坦克旋转角度
-        this.tank.rotation = angle;
+        // 记录当前摇杆角度
+        this.currentJoystickAngle = angle;
+
+        // 如果正在开火，不更新坦克朝向，只更新位置
+        if (!this.isFiring) {
+            this.tank.rotation = angle;
+        }
         
         // 计算移动距离，使用动态移速
         let speed = this.currentMoveSpeed * strength;
@@ -342,6 +352,55 @@ export class EndlessModeGame extends Laya.Script {
         if (!this.willCollideWithBoxes(newX, newY)) {
             // 更新坦克位置
             this.tank.pos(newX, newY);
+        }
+    }
+
+    private findClosestTarget(): Laya.Sprite {
+        let closestTarget: Laya.Sprite = null;
+        let minDistanceSq = Number.MAX_VALUE;
+    
+        // 优先寻找敌方坦克
+        if (this.enemyTanks && this.enemyTanks.length > 0) {
+            for (const enemy of this.enemyTanks) {
+                if (enemy && !enemy.destroyed) {
+                    const dx = enemy.x - this.tank.x;
+                    const dy = enemy.y - this.tank.y;
+                    const distanceSq = dx * dx + dy * dy;
+                    if (distanceSq < minDistanceSq) {
+                        minDistanceSq = distanceSq;
+                        closestTarget = enemy;
+                    }
+                }
+            }
+        }
+    
+        // 如果没有敌方坦克，再寻找箱子
+        if (closestTarget === null && this.boxes && this.boxes.length > 0) {
+            for (const box of this.boxes) {
+                if (box && !box.destroyed) {
+                    const dx = box.x - this.tank.x;
+                    const dy = box.y - this.tank.y;
+                    const distanceSq = dx * dx + dy * dy;
+                    if (distanceSq < minDistanceSq) {
+                        minDistanceSq = distanceSq;
+                        closestTarget = box;
+                    }
+                }
+            }
+        }
+    
+        return closestTarget;
+    }
+    
+    private updateAutoAim(): void {
+        if (!this.tank || this.tank.destroyed) return;
+    
+        const target = this.findClosestTarget();
+        if (target) {
+            const dx = target.x - this.tank.x;
+            const dy = target.y - this.tank.y;
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            this.tank.rotation = angle;
         }
     }
 
@@ -388,7 +447,44 @@ export class EndlessModeGame extends Laya.Script {
         if (!this.tank || this.tank.destroyed) {
             return;
         }
-        
+
+        // 标记正在开火，暂时接管旋转控制
+        this.isFiring = true;
+        // 清除之前的重置定时器，支持连发时的持续锁定
+        Laya.timer.clear(this, this.resetFiring);
+
+        // 1. 瞬间瞄准：直接设置角度，无动画
+        const target = this.findClosestTarget();
+        if (target) {
+            const dx = target.x - this.tank.x;
+            const dy = target.y - this.tank.y;
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+            this.tank.rotation = angle;
+        } else {
+            // 没有目标时，沿摇杆方向射击
+            this.tank.rotation = this.currentJoystickAngle;
+        }
+
+        // 2. 瞬间开火
+        this.fireBullet();
+
+        // 3. 极短延迟后回正，保证射击视觉的连贯性
+        // 50ms 足够让渲染引擎绘制一帧瞄准状态，产生"抽帧"打击感
+        Laya.timer.once(50, this, this.resetFiring);
+    }
+
+    /**
+     * 射击结束，恢复状态
+     */
+    private resetFiring(): void {
+        this.isFiring = false;
+        // 立即回正到摇杆方向，实现"松手即回正"的丝滑感
+        if (this.tank && !this.tank.destroyed) {
+            this.tank.rotation = this.currentJoystickAngle;
+        }
+    }
+
+    private fireBullet(): void {
         // 播放开火音效
         this.fireSound = Laya.SoundManager.playSound("resources/fire.mp3", 1);
         this.fireSound.volume = 0.6;
@@ -981,6 +1077,24 @@ export class EndlessModeGame extends Laya.Script {
         }
     }
 
+    private static readonly ENEMY_SKINS = [
+        "resources/Retina/tank1_blue.png",
+        "resources/Retina/tank1_dark.png",
+        "resources/Retina/tank1_green.png",
+        "resources/Retina/tank1_sand.png",
+        "resources/Retina/tank2_blue.png",
+        "resources/Retina/tank2_dark.png",
+        "resources/Retina/tank2_green.png",
+        "resources/Retina/tank2_red.png",
+        "resources/Retina/tank2_sand.png",
+        "resources/Retina/tank3_Red3.png",
+        "resources/Retina/tank3_red1.png",
+        "resources/Retina/tank3_red2.png",
+        "resources/Retina/tank3_red4.png",
+        "resources/Retina/tank4_1.png",
+        "resources/Retina/tank4_2.png"
+    ];
+
     private checkEnemyCount(): void {
         // 移除已销毁的敌人
         this.enemyTanks = this.enemyTanks.filter(tank => !tank.destroyed);
@@ -997,8 +1111,11 @@ export class EndlessModeGame extends Laya.Script {
         // 决定是否为追踪型坦克（2/3概率）
         const isChasing = Math.random() < 0.667;
         
-        // 创建敌方坦克，传递箱子数组
-        const enemy = new EnemyTank(this.tank, isChasing, this.boxes);
+        // 随机选择一个皮肤
+        const randomSkin = EndlessModeGame.ENEMY_SKINS[Math.floor(Math.random() * EndlessModeGame.ENEMY_SKINS.length)];
+
+        // 创建敌方坦克，传递箱子数组和皮肤
+        const enemy = new EnemyTank(this.tank, isChasing, this.boxes, randomSkin);
         
         // 随机位置（避免与玩家坦克和其他敌方坦克重叠）
         let x: number, y: number;

@@ -17,6 +17,7 @@ export class EnemyTank extends Laya.Sprite {
     private currentAngle: number = 0;
     private boxes: any[] = []; // 存储箱子引用
     private moveSpeed: number = EnemyTank.CHASE_SPEED; // 初始速度
+    private skinUrl: string;
     
     // 添加一个静态变量来标记是否需要提速
     private static increasedSpeed: boolean = false;
@@ -26,11 +27,12 @@ export class EnemyTank extends Laya.Sprite {
         EnemyTank.increasedSpeed = isHighSpeed;
     }
     
-    constructor(playerTank: Laya.Sprite, isChasing: boolean = true, boxes: any[] = []) {
+    constructor(playerTank: Laya.Sprite, isChasing: boolean = true, boxes: any[] = [], skinUrl?: string) {
         super();
         this.targetTank = playerTank;
         this.isChasing = isChasing;
         this.boxes = boxes;
+        this.skinUrl = skinUrl || "resources/enemy-tank.png";
         
         // 设置敌方坦克速度
         this.moveSpeed = EnemyTank.increasedSpeed ? 
@@ -43,10 +45,11 @@ export class EnemyTank extends Laya.Sprite {
     private init(): void {
         // 创建坦克图像
         let tankImage = new Laya.Image();
-        tankImage.skin = "resources/enemy-tank.png";
+        tankImage.skin = this.skinUrl;
         tankImage.width = EnemyTank.TANK_RADIUS * 2;
         tankImage.height = EnemyTank.TANK_RADIUS * 2;
         tankImage.pivot(tankImage.width / 2, tankImage.height / 2);
+        tankImage.rotation = -90; // 修正炮口方向
         this.addChild(tankImage);
         
         // 开始更新循环

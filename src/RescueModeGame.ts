@@ -539,6 +539,10 @@ export class RescueModeGame extends Laya.Script {
         this.tank.pos(Laya.stage.width / 2, Laya.stage.height / 2);
         this.gameBox.addChild(this.tank);
 
+        // 将滤镜直接应用于持有纹理的Image对象
+        const glowFilter = new Laya.GlowFilter("#ffff00", 5, 0, 0);
+        this.tankBody.filters = [glowFilter];
+
         // 创建无敌效果
         this.createInvincibleEffect();
         // 激活无敌状态
@@ -1171,6 +1175,24 @@ export class RescueModeGame extends Laya.Script {
         }
     }
 
+    private static readonly ENEMY_SKINS = [
+        "resources/Retina/tank1_blue.png",
+        "resources/Retina/tank1_dark.png",
+        "resources/Retina/tank1_green.png",
+        "resources/Retina/tank1_sand.png",
+        "resources/Retina/tank2_blue.png",
+        "resources/Retina/tank2_dark.png",
+        "resources/Retina/tank2_green.png",
+        "resources/Retina/tank2_red.png",
+        "resources/Retina/tank2_sand.png",
+        "resources/Retina/tank3_Red3.png",
+        "resources/Retina/tank3_red1.png",
+        "resources/Retina/tank3_red2.png",
+        "resources/Retina/tank3_red4.png",
+        "resources/Retina/tank4_1.png",
+        "resources/Retina/tank4_2.png"
+    ];
+
     private checkEnemyCount(): void {
         // 移除已销毁的敌人
         this.enemyTanks = this.enemyTanks.filter(tank => !tank.destroyed);
@@ -1187,8 +1209,11 @@ export class RescueModeGame extends Laya.Script {
         // 决定是否为追踪型坦克（2/3概率）
         const isChasing = Math.random() < 0.667;
         
-        // 创建敌方坦克，传递箱子数组
-        const enemy = new EnemyTank(this.tank, isChasing, this.boxes);
+        // 随机选择一个皮肤
+        const randomSkin = RescueModeGame.ENEMY_SKINS[Math.floor(Math.random() * RescueModeGame.ENEMY_SKINS.length)];
+
+        // 创建敌方坦克，传递箱子数组和皮肤
+        const enemy = new EnemyTank(this.tank, isChasing, this.boxes, randomSkin);
         
         // 随机位置（避免与玩家坦克和其他敌方坦克重叠）
         let x: number, y: number;
