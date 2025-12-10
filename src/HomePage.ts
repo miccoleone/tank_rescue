@@ -58,20 +58,34 @@ export class HomePage extends Laya.Script {
         }
 
         // 预加载资源
-        Laya.loader.load([
-            "resources/click.mp3",
-            "resources/home_bg.jpg",
-            "resources/endless_mode.png",
-            "resources/save_mode.jpg",
-            "resources/stats_icon.png",
-            "resources/achievement.png",
-            "resources/lock.png",
-        ], Laya.Handler.create(this, () => {
-            // 初始化UI
-            this.initUI();
-            // 显示欢迎提示（移到资源加载完成后）
-            TutorialManager.instance.showWelcomeTip(this.owner as Laya.Sprite);
-        }));
+        const resources = [
+            { url: "resources/click.mp3", type: Laya.Loader.SOUND },
+            { url: "resources/home_bg.jpg", type: Laya.Loader.IMAGE },
+            { url: "resources/endless_mode.png", type: Laya.Loader.IMAGE },
+            { url: "resources/save_mode.jpg", type: Laya.Loader.IMAGE },
+            { url: "resources/stats_icon.png", type: Laya.Loader.IMAGE },
+            { url: "resources/achievement.png", type: Laya.Loader.IMAGE },
+            { url: "resources/lock.png", type: Laya.Loader.IMAGE },
+        ];
+        Laya.loader.load(
+            resources,
+            Laya.Handler.create(this, () => {
+                console.log("HomePage resources loaded successfully");
+                // 检查图片资源是否加载成功
+                const endlessTexture = Laya.loader.getRes("resources/endless_mode.png");
+                const saveTexture = Laya.loader.getRes("resources/save_mode.jpg");
+                console.log("Endless mode texture:", endlessTexture);
+                console.log("Save mode texture:", saveTexture);
+                
+                // 初始化UI
+                this.initUI();
+                // 显示欢迎提示（移到资源加载完成后）
+                TutorialManager.instance.showWelcomeTip(this.owner as Laya.Sprite);
+            }),
+            Laya.Handler.create(this, (progress: number) => {
+                console.log(`HomePage loading progress: ${progress}`);
+            })
+        );
 
         // 确保场景尺寸正确
         const owner = this.owner as Laya.Scene;
@@ -721,24 +735,29 @@ export class HomePage extends Laya.Script {
         
         // 创建背景图
         const bg = new Laya.Image();
-        bg.skin = imagePath;  // 直接使用传入的路径，因为调用时已经包含了 resources/
-        bg.size(bgWidth, bgHeight);
+        bg.width = bgWidth;
+        bg.height = bgHeight;
+        bg.zOrder = 0; // 确保背景图片在最底层
         
-        // 创建图片遮罩
-        const imageMask = new Laya.Sprite();
-        this.drawRoundedFrame(imageMask, {
-            x: 0, y: 0,
-            width: bgWidth,
-            height: bgHeight,
-            radius: 6,
-            strokeColor: "rgba(0,0,0,0)",  // 透明边框
-            strokeWidth: 0,
-            fillStyle: "#ffffff"  // 白色填充
-        });
+        // 检查资源是否已加载，如果已加载则直接设置皮肤，否则等待加载完成
+        if (Laya.loader.getRes(imagePath)) {
+            console.log(`Directly setting skin for ${imagePath}`);
+            bg.skin = imagePath;
+        } else {
+            console.log(`Waiting for resource ${imagePath} to load`);
+            // 监听资源加载完成事件
+            Laya.loader.once(Laya.Event.COMPLETE, this, () => {
+                if (!bg.destroyed) {
+                    console.log(`Resource loaded, setting skin for ${imagePath}`);
+                    bg.skin = imagePath;
+                }
+            });
+        }
         
+        // 不使用遮罩，而是直接设置圆角裁剪效果
         bgContainer.pos(12, 12);
         bgContainer.addChild(bg);
-        bgContainer.mask = imageMask;
+        bgContainer.zOrder = 0; // 确保背景在最底层
         btn.addChild(bgContainer);
 
         // ======================
@@ -757,6 +776,7 @@ export class HomePage extends Laya.Script {
         mainText.width = width;
         mainText.align = "center";
         mainText.y = textY + (textHeight - mainText.fontSize) / 2; // 垂直居中
+        mainText.zOrder = 2; // 确保文字在上层
         btn.addChild(mainText);
 
         // 3.2 附加元素
@@ -769,6 +789,7 @@ export class HomePage extends Laya.Script {
             // subText.width = width;
             // subText.align = "center";
             // subText.y = mainText.y + mainText.fontSize + 7; // 主文字下方
+            // subText.zOrder = 2; // 确保文字在上层
             // btn.addChild(subText);
         }else if (text == "拯救模式") {
             const subText = new Laya.Text();
@@ -778,6 +799,7 @@ export class HomePage extends Laya.Script {
             subText.width = width;
             subText.align = "center";
             subText.y = mainText.y + mainText.fontSize + 7; // 主文字下方
+            subText.zOrder = 2; // 确保文字在上层
             btn.addChild(subText);
         }
 
@@ -786,6 +808,7 @@ export class HomePage extends Laya.Script {
             // 添加半透明遮罩
             const lockOverlay = new Laya.Sprite();
             lockOverlay.graphics.drawRect(0, 0, width, height, "rgba(0, 0, 0, 0.5)");
+            lockOverlay.zOrder = 3; // 确保遮罩在最上层
             btn.addChild(lockOverlay);
             
             // 添加锁定图标 - 使用图片而不是emoji
@@ -796,6 +819,7 @@ export class HomePage extends Laya.Script {
             lockIcon.height = iconSize;
             lockIcon.x = (width - iconSize) / 2; // 水平居中
             lockIcon.y = (height - iconSize) / 2; // 垂直居中
+            lockIcon.zOrder = 4; // 确保锁定图标在最上层
             btn.addChild(lockIcon);
         }
 
@@ -838,16 +862,17 @@ export class HomePage extends Laya.Script {
     ) {
         const frame = new Laya.Sprite();
         frame.graphics.drawPath(
-            options.x, options.y,
+            0, 0, // 坐标系原点
             [
-                ["moveTo", options.radius, 0],
-                ["lineTo", options.width - options.radius, 0],
-                ["lineTo", options.width, options.radius],
-                ["lineTo", options.width, options.height - options.radius],
-                ["lineTo", options.width - options.radius, options.height],
-                ["lineTo", options.radius, options.height],
-                ["lineTo", 0, options.height - options.radius],
-                ["lineTo", 0, options.radius],
+                ["moveTo", options.x + options.radius, options.y],
+                ["lineTo", options.x + options.width - options.radius, options.y],
+                ["arcTo", options.x + options.width, options.y, options.x + options.width, options.y + options.radius, options.radius],
+                ["lineTo", options.x + options.width, options.y + options.height - options.radius],
+                ["arcTo", options.x + options.width, options.y + options.height, options.x + options.width - options.radius, options.y + options.height, options.radius],
+                ["lineTo", options.x + options.radius, options.y + options.height],
+                ["arcTo", options.x, options.y + options.height, options.x, options.y + options.height - options.radius, options.radius],
+                ["lineTo", options.x, options.y + options.radius],
+                ["arcTo", options.x, options.y, options.x + options.radius, options.y, options.radius],
                 ["closePath"]
             ] as any, // 使用类型断言，因为Laya API期望的类型可能与我们提供的不完全匹配
             { 
@@ -856,6 +881,7 @@ export class HomePage extends Laya.Script {
                 fillStyle: options.fillStyle 
             }
         );
+        frame.zOrder = -1; // 确保边框在最底层
         parent.addChild(frame);
     }
     
