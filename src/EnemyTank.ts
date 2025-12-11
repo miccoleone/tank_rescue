@@ -3,8 +3,8 @@ const { regClass } = Laya;
 @regClass()
 export class EnemyTank extends Laya.Sprite {
     private static readonly RANDOM_MOVE_INTERVAL = 1000; // 随机移动的时间间隔
-    private static readonly CHASE_SPEED = 2; // 追踪玩家时的速度
-    private static readonly RANDOM_SPEED = 2; // 随机移动时的速度
+    private static readonly CHASE_SPEED = 1.7; // 追踪玩家时的速度
+    private static readonly RANDOM_SPEED = 1.7; // 随机移动时的速度
     private static readonly TANK_RADIUS = 16; // 坦克半径
     private static readonly BOX_RADIUS = 16; // 箱子半径
     private static readonly MIN_DISTANCE = EnemyTank.TANK_RADIUS + EnemyTank.BOX_RADIUS;

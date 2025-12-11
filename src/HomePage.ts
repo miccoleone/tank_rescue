@@ -7,6 +7,19 @@ import { Achievement, MilitaryRank } from "./Achievement";
 import { TutorialManager } from "./TutorialManager";
 import { RescueModeUnlockManager } from "./RescueModeUnlockManager";
 
+// 添加微信小游戏API的类型声明
+declare const wx: {
+    showShareMenu: (options: { 
+        withShareTicket?: boolean;
+        menus?: string[];
+    }) => void;
+    onShareAppMessage: (callback: () => { 
+        title: string; 
+        imageUrl?: string;
+        desc?: string;
+    }) => void;
+};
+
 /**
  * 游戏首页
  */
@@ -27,8 +40,8 @@ export class HomePage extends Laya.Script {
     private static readonly ICON_SIZE = 48; // 图标大小
     
     /** 服务器主机地址 */
-    // private static readonly HOST = "studydayday.cn"; // 生产环境
-    private static readonly HOST = "localhost:4396"; // 本地调试环境
+    private static readonly HOST = "studydayday.cn"; // 生产环境
+    // private static readonly HOST = "localhost:4396"; // 本地调试环境
     
     constructor() {
         super();
@@ -98,6 +111,9 @@ export class HomePage extends Laya.Script {
             console.error("初始化弹框组件失败:", e);
         }
 
+        // 初始化微信分享功能
+        this.initWxShare();
+
         // 预加载资源
         const resources = [
             { url: "resources/click.mp3", type: Laya.Loader.SOUND },
@@ -132,6 +148,28 @@ export class HomePage extends Laya.Script {
         const owner = this.owner as Laya.Scene;
         owner.width = Laya.stage.width;
         owner.height = Laya.stage.height;
+    }
+    
+    /**
+     * 初始化微信分享功能
+     */
+    private initWxShare(): void {
+        // 检查是否在微信环境中
+        if (typeof wx !== 'undefined') {
+            // 显示转发菜单
+            wx.showShareMenu({
+                withShareTicket: true,
+                menus: ['shareAppMessage', 'shareTimeline']
+            });
+
+            // 监听用户点击右上角菜单的"转发"按钮时触发的事件
+            wx.onShareAppMessage(() => {
+                return {
+                    title: '坦克大救援 - 快来和我一起玩吧',
+                    imageUrl: 'resources/endless_mode.png'
+                };
+            });
+        }
     }
     
     private initUI(): void {
@@ -748,7 +786,7 @@ export class HomePage extends Laya.Script {
         });
         
         // 发送POST请求获取排行榜数据
-        xhr.send(`http://${HomePage.HOST}/tank_rescue/ranklist`, 
+        xhr.send(`https://${HomePage.HOST}/tank_rescue/ranklist`, 
                  JSON.stringify(requestData), 
                  "post", 
                  "text",

@@ -31,6 +31,13 @@ declare const wx: {
         onError: (callback: (err: any) => void) => void;
         onLoad: (callback: () => void) => void;
     };
+    shareAppMessage: (options: {
+        title: string;
+        desc?: string;
+        imageUrl?: string;
+        success?: () => void;
+        fail?: (error: any) => void;
+    }) => void;
 };
 
 // 段位系统配置
@@ -123,7 +130,7 @@ export class EndlessModeGame extends Laya.Script {
     private popupPanel: PopupPanel;
     
     // 移速相关
-    private currentMoveSpeed: number = 3.0; // 当前移速
+    private currentMoveSpeed: number = 2; // 当前移速
     private lastMoveSpeedLevel: number = 0; // 上次移速等级，用于检测提升
     
     constructor() {
@@ -509,6 +516,7 @@ export class EndlessModeGame extends Laya.Script {
         const currentRankInfo = this.getRankInfo(this.score);
         const rankBonus = Math.floor(Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK) / 4) * 1; // 每个大段位（4个小段位）增加1点速度
         let speed = baseSpeed + rankBonus;
+        if (speed > 15) speed = 15;
         
         let vx = Math.cos(radian) * speed;
         let vy = Math.sin(radian) * speed;
@@ -801,32 +809,13 @@ export class EndlessModeGame extends Laya.Script {
     private calculateMoveSpeed(): number {
         const currentLevel = Math.floor(this.score / EndlessModeGame.POINTS_PER_RANK);
         
-        // 根据段位等级计算移速 - 重新设计梯度：基础3，最高5
-        if (currentLevel >= 21) {
-            // 长城段位（21级及以上）：移速 5.0（最高）
-            return 5.0;
-        } else if (currentLevel >= 17) {
-            // 王者段位（17-20级）：移速 4.8
-            return 4.8;
-        } else if (currentLevel >= 13) {
-            // 钻石段位（13-16级）：移速 4.5
-            return 4.5;
-        } else if (currentLevel >= 9) {
-            // 黄金段位（9-12级）：移速 4.0
-            return 4.0;
-        } else if (currentLevel >= 7) {
-            // 白银后期（7-8级）：移速 3.5
-            return 3.5;
-        } else if (currentLevel >= 5) {
-            // 白银前期（5-6级）：移速 3.2
-            return 3.2;
-        } else if (currentLevel >= 3) {
-            // 青铜后期（3-4级）：移速 3.1
-            return 3.1;
-        } else {
-            // 青铜前期（1-2级）：移速 3.0（基础）
-            return 3.0;
-        }
+        // 简化移速计算：基础速度1.5，每级增加0.02
+        const baseSpeed = 1;
+        const speedIncreasePerLevel = 0.02;
+        const maxSpeed = 2.5; // 最大速度限制为2.5
+        
+        const calculatedSpeed = baseSpeed + (currentLevel * speedIncreasePerLevel);
+        return Math.min(calculatedSpeed, maxSpeed);
     }
 
     /**
@@ -1442,9 +1431,10 @@ export class EndlessModeGame extends Laya.Script {
                             countdownTimerId = -1;
                         }
                         
-                        // 移除倒计时和复活按钮
+                        // 移除倒计时、复活按钮和分享按钮
                         countdownContainer.destroy();
                         reviveButton.destroy();
+                        shareButton.destroy();
                         
                         // 复活玩家
                         this.revivePlayer();
@@ -1464,12 +1454,111 @@ export class EndlessModeGame extends Laya.Script {
                     countdownTimerId = -1;
                 }
                 
-                // 移除倒计时和复活按钮
+                // 移除倒计时、复活按钮和分享按钮
                 countdownContainer.destroy();
                 reviveButton.destroy();
+                shareButton.destroy();
                 
                 // 复活玩家
                 this.revivePlayer();
+            }
+        });
+
+        // 创建分享按钮容器
+        const shareButton = new Laya.Sprite();
+        shareButton.name = "ShareButton";
+        shareButton.zOrder = 1003;
+        
+        // 设置分享按钮位置 - 在复活按钮右侧，增加间距到100像素避免连接
+        shareButton.pos(Laya.stage.width * 0.75 + 200, Laya.stage.height * 0.5);
+        this.owner.addChild(shareButton);
+
+        // 创建分享按钮背景 - 使用橙色主题与复活按钮区别，调整尺寸
+        const shareBg = new Laya.Sprite();
+        // 先绘制阴影
+        shareBg.graphics.drawRect(-67, 2, 134, 104, "rgba(0,0,0,0.1)");
+        // 再绘制橙色圆角背景 - 稍微缩小避免视觉连接
+        shareBg.graphics.drawPath(-65, 0, [
+            ["moveTo", 10, 0],
+            ["lineTo", 124, 0],
+            ["arcTo", 134, 0, 134, 10, 10],
+            ["lineTo", 134, 90],
+            ["arcTo", 134, 100, 124, 100, 10],
+            ["lineTo", 10, 100],
+            ["arcTo", 0, 100, 0, 90, 10],
+            ["lineTo", 0, 10],
+            ["arcTo", 0, 0, 10, 0, 10],
+            ["closePath"]
+        ], {fillStyle: "#FF9966"}); // 淡橙色背景
+        
+        // 设置分享按钮的轴心点 - 将Y轴轴心点设在按钮中心
+        shareButton.pivot(34, 50);
+        shareButton.addChild(shareBg);
+
+        // 添加分享图标 - 使用share.png图片
+        const shareIcon = new Laya.Image();
+        shareIcon.skin = "resources/share.png";
+        shareIcon.width = 36;
+        shareIcon.height = 36;
+        shareIcon.pos(-55, 32);  // 图标位置
+        shareButton.addChild(shareIcon);
+
+        // 添加分享文本
+        const shareText = new Laya.Text();
+        shareText.text = "分享";
+        shareText.fontSize = 28;
+        shareText.color = "#FFFFFF";
+        shareText.width = 70; 
+        shareText.height = 100;
+        shareText.align = "left"; 
+        shareText.valign = "middle";
+        shareText.pos(-10, 0);  // 文字位置，在图标右侧
+        shareButton.addChild(shareText);
+
+        // 设置分享按钮点击区域
+        const shareHitArea = new Laya.HitArea();
+        shareHitArea.hit.drawRect(-65, 0, 134, 100, "#000000");
+        shareButton.hitArea = shareHitArea;
+        shareButton.mouseEnabled = true;
+
+        // 添加分享按钮触摸事件
+        shareButton.on(Laya.Event.MOUSE_DOWN, this, () => {
+            shareBg.alpha = 0.85;
+            Laya.Tween.to(shareButton, { scaleX: 0.95, scaleY: 0.95 }, 100, null, null, 0, true, true);
+        });
+        shareButton.on(Laya.Event.MOUSE_UP, this, () => {
+            shareBg.alpha = 1;
+            Laya.Tween.to(shareButton, { scaleX: 1, scaleY: 1 }, 100, null, null, 0, true, true);
+        });
+        shareButton.on(Laya.Event.MOUSE_OUT, this, () => {
+            shareBg.alpha = 1;
+            shareButton.scale(1, 1);
+        });
+
+        // 分享按钮点击事件
+        shareButton.on(Laya.Event.CLICK, this, () => {
+            // 播放点击音效
+            Laya.SoundManager.playSound("resources/click.mp3", 1);
+            
+            // 在微信环境中调用分享API
+            if (typeof wx !== 'undefined') {
+                try {
+                    wx.shareAppMessage({
+                        title: `我获得了${this.score}分！你能挑战我吗？`,
+                        imageUrl: "resources/endless_mode.png", // 可以设置分享图片
+                        success: () => {
+                            console.log("分享成功");
+                            // this.popupPanel.showFadeNotification("分享成功！", 2000, "#00CC00");
+                        },
+                        fail: (error: any) => {
+                            console.log("分享失败", error);
+                        }
+                    });
+                } catch (e) {
+                    console.log("分享API调用失败", e);
+                }
+            } else {
+                console.log("非微信环境，显示分享模拟");
             }
         });
         
@@ -1504,9 +1593,10 @@ export class EndlessModeGame extends Laya.Script {
                     countdownTimerId = -1;
                 }
                 
-                // 移除倒计时容器和复活按钮
+                // 移除倒计时容器、复活按钮和分享按钮
                 countdownContainer.destroy();
                 reviveButton.destroy();
+                shareButton.destroy();
                 
                 // 重置游戏
                 this.resetGame();
@@ -1890,6 +1980,18 @@ export class EndlessModeGame extends Laya.Script {
                 // 创建激励视频广告实例
                 this.videoAd = wx.createRewardedVideoAd({
                     adUnitId: 'adunit-c1744ed78e810a8d'
+                });
+                
+                // 添加错误处理
+                this.videoAd.onError((err: any) => {
+                    console.error('激励视频广告错误:', err);
+                    // 可以在这里添加广告加载失败的处理逻辑
+                    // 例如：隐藏广告入口或显示提示信息
+                });
+                
+                // 添加加载成功回调
+                this.videoAd.onLoad(() => {
+                    console.log('激励视频广告加载成功');
                 });
                 
                 console.log('微信广告初始化成功');

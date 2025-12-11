@@ -263,6 +263,18 @@ export class RescueModeGame extends Laya.Script {
                     adUnitId: 'adunit-c1744ed78e810a8d'
                 });
                 
+                // 添加错误处理
+                this.videoAd.onError((err: any) => {
+                    console.error('激励视频广告错误:', err);
+                    // 可以在这里添加广告加载失败的处理逻辑
+                    // 例如：隐藏广告入口或显示提示信息
+                });
+                
+                // 添加加载成功回调
+                this.videoAd.onLoad(() => {
+                    console.log('激励视频广告加载成功');
+                });
+                
                 console.log('激励视频广告初始化成功');
             } catch (e) {
                 console.error('激励视频广告初始化失败', e);
@@ -610,9 +622,9 @@ export class RescueModeGame extends Laya.Script {
         // 更新坦克旋转角度
         this.tank.rotation = angle;
         
-        // 计算移动距离，基础速度为5，最大不超过7.5（1.5倍）
-        const baseSpeed = 4;
-        const maxSpeed = baseSpeed * 1.5;
+        // 计算移动距离，基础速度为2，最大不超过3（1.5倍）
+        const baseSpeed = 3;
+        const maxSpeed = baseSpeed * 2;
         let speed = baseSpeed * strength;
         speed = Math.min(speed, maxSpeed); // 限制最大速度
         
@@ -1442,7 +1454,7 @@ export class RescueModeGame extends Laya.Script {
             this.scatterRescuedPilots(tankX, tankY);
         }
 
-        // 检查并上传玩家数据
+        // 检查并更新玩家数据
         this.checkAndUploadPlayerData();
 
         // 检查军衔晋升 - 使用渐隐通知，不打断游戏
@@ -1498,13 +1510,13 @@ export class RescueModeGame extends Laya.Script {
         const bestMilitaryRank = bestMilitaryRankData ? bestMilitaryRankData : "";
         
         // 检查军衔数据是否需要更新
+        // 检查军衔数据是否需要更新
         // 这里简单地比较字符串，实际应用中可能需要更复杂的军衔等级比较逻辑
         if (newMilitaryRank !== bestMilitaryRank) {
             // 更新本地存储的最佳军衔数据
             Laya.LocalStorage.setItem("bestMilitaryRank", newMilitaryRank.toString());
             
-            // 上传军衔数据到服务器
-            this.uploadMilitaryRankData("玩家", newMilitaryRank.toString(), newTotalSoldiers);
+            // 注意：已移除上传军衔数据到服务器的调用，改为在玩家点击排行榜时同步
         }
     }
     
