@@ -81,6 +81,11 @@ export class Achievement {
         this.rescuedSoldiers++;
         this.updateRank();
         this.saveData();
+        
+        // 同时更新本地存储的总士兵数
+        const totalSoldiersData = Laya.LocalStorage.getItem("totalSoldiers");
+        const totalSoldiers = totalSoldiersData ? parseInt(totalSoldiersData) : 0;
+        Laya.LocalStorage.setItem("totalSoldiers", (totalSoldiers + 1).toString());
     }
 
     private updateRank(): void {
@@ -91,6 +96,9 @@ export class Achievement {
                 if (this.currentRank !== config.name) {
                     this.currentRank = config.name;
                     // 可以在这里添加军衔升级的提示或特效
+                    
+                    // 同时更新本地存储的最佳军衔数据
+                    Laya.LocalStorage.setItem("bestMilitaryRank", this.currentRank.toString());
                 }
                 break;
             }

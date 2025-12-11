@@ -299,8 +299,8 @@ export class PopupPanel extends Laya.Script {
             text.text = message;
             text.fontSize = 20;
             text.color = "#333333";
-            text.width = container.width - 40;
-            text.x = 20;
+            text.width = container.width - 70;
+            text.x = 35;
             text.y = 20;
             text.wordWrap = true;
             text.leading = 8;

@@ -59,7 +59,10 @@ export class RescueModeGame extends Laya.Script {
     private static readonly PILOT_RESCUE_SCORE = 500; // 救援驾驶员的得分
     private static readonly INVINCIBLE_DURATION = 5000; // 无敌时间5秒
     
-        // 段位系统定义
+    /** 服务器主机地址 */
+    private static readonly HOST = "studydayday.cn"; // 生产环境
+    // private static readonly HOST = "localhost:4396"; // 本地调试环境
+    // 段位系统定义
     private static readonly RANKS: RankLevel[] = [
         { name: "青铜", icon: "resources/moon.png", count: 4 },
         { name: "白银", icon: "resources/star.png", count: 4 },
@@ -1429,11 +1432,6 @@ export class RescueModeGame extends Laya.Script {
         // 1. 设置一个标志，表示坦克已经"死亡"
         this.isPlayerDead = true;
         
-        // 玩家死亡时显示home按钮
-        if (this.homeBtn) {
-            this.homeBtn.visible = true;
-        }
-        
         // 2. 可以选择隐藏坦克，但不是必须的
         this.tank.visible = false;
         
@@ -1442,8 +1440,7 @@ export class RescueModeGame extends Laya.Script {
             this.scatterRescuedPilots(tankX, tankY);
         }
 
-        // 检查并上传玩家数据
-        this.checkAndUploadPlayerData();
+        // 移除了游戏结束时主动同步玩家数据的代码，改为在玩家点击排行榜时同步
 
         // 检查军衔晋升 - 使用渐隐通知，不打断游戏
         this.checkRankPromotion();
@@ -1458,56 +1455,66 @@ export class RescueModeGame extends Laya.Script {
     }
     
     /**
-     * 检查并上传玩家数据到服务器
+     * 在玩家死亡时散落所有已救援的驾驶员
+     * @param x 坦克X坐标
+     * @param y 坦克Y坐标
      */
-    private checkAndUploadPlayerData(): void {
-        // 获取当前玩家的救援数据
-        const currentRescueCount = this.rescuedPilots;
-        
-        // 获取当前玩家的军衔数据
-        const rankInfo = Achievement.instance.getCurrentRankInfo_junxian();
-        const militaryRank = rankInfo.rank;
-        const soldiers = rankInfo.soldiers;
-        
-        // 获取本地存储的最佳救援数据
-        const bestRescueData = Laya.LocalStorage.getItem("bestRescueCount");
-        const bestRescueCount = bestRescueData ? parseInt(bestRescueData) : 0;
-        
-        // 获取本地存储的总士兵数
-        const totalSoldiersData = Laya.LocalStorage.getItem("totalSoldiers");
-        const totalSoldiers = totalSoldiersData ? parseInt(totalSoldiersData) : 0;
-        
-        // 更新总士兵数（累加当前游戏的救援数）
-        const newTotalSoldiers = totalSoldiers + currentRescueCount;
-        
-        // 检查救援数据是否需要更新
-        if (currentRescueCount > bestRescueCount) {
-            // 更新本地存储的最佳救援数据
-            Laya.LocalStorage.setItem("bestRescueCount", currentRescueCount.toString());
+    private scatterRescuedPilots(x: number, y: number): void {
+        // 散落所有驾驶员 上限 50
+        if(this.rescuedPilots > 50){
+            this.rescuedPilots = 50;
         }
+
+        // 先暂停游戏中所有已有的驾驶员倒计时
+        PilotPool.pauseAllPilots(this.gameBox);
         
-        // 更新本地存储的总士兵数
-        Laya.LocalStorage.setItem("totalSoldiers", newTotalSoldiers.toString());
-        
-        // 更新军衔数据（使用最新的总士兵数）
-        const newRankInfo = Achievement.instance.getCurrentRankInfo_junxian();
-        const newMilitaryRank = newRankInfo.rank;
-        
-        // 获取本地存储的军衔数据
-        const bestMilitaryRankData = Laya.LocalStorage.getItem("bestMilitaryRank");
-        const bestMilitaryRank = bestMilitaryRankData ? bestMilitaryRankData : "";
-        
-        // 检查军衔数据是否需要更新
-        // 这里简单地比较字符串，实际应用中可能需要更复杂的军衔等级比较逻辑
-        if (newMilitaryRank !== bestMilitaryRank) {
-            // 更新本地存储的最佳军衔数据
-            Laya.LocalStorage.setItem("bestMilitaryRank", newMilitaryRank.toString());
+        // 创建新的驾驶员
+        for (let i = 0; i < this.rescuedPilots; i++) {
+            // 从对象池获取驾驶员
+            const pilot = PilotPool.instance.getPilot();
             
-            // 上传军衔数据到服务器
-            this.uploadMilitaryRankData("玩家", newMilitaryRank.toString(), newTotalSoldiers);
+            // 计算散落位置（在爆炸点周围随机位置）
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * 70 + 10; // 10-80像素的随机距离，使驾驶员密集一些
+            const pilotX = x + Math.cos(angle) * distance;
+            const pilotY = y + Math.sin(angle) * distance;
+            
+            // 设置位置并添加到场景
+            pilot.pos(pilotX, pilotY);
+            this.gameBox.addChild(pilot);
         }
+        
+        // 重置救援驾驶员计数
+        // this.rescuedPilots = 0;
+        // this.updatePilotDisplay();
     }
-    
+
+    /**
+     * 继续游戏结束流程
+     */
+    private continueGameOver(): void {
+        // 创建结算面板
+        this.showGameStats();
+        // 显示倒计时
+        this.showCountdown();
+    }
+                console.log("上传军衔数据成功:", result);
+            } catch (e) {
+                console.error("解析上传军衔数据响应失败:", e);
+            }
+        });
+        
+        xhr.once(Laya.Event.ERROR, this, (data: any) => {
+            console.error("上传军衔数据失败:", data);
+        });
+        
+        // 发送POST请求上传军衔数据
+        xhr.send(`http://${RescueModeGame.HOST}/tank_rescue/update_military_rank`, 
+                 JSON.stringify(data), 
+                 "post", 
+                 "text",
+                 ["Content-Type", "application/json"]);
+    }
     
     /**
      * 在玩家死亡时散落所有已救援的驾驶员

@@ -252,6 +252,8 @@ export class Pilot extends Laya.Sprite {
         // 更新军衔 - 每救援一名驾驶员增加一名战士
         Achievement.instance.addRescuedSoldier();
         
+        console.log("救援驾驶员，当前总救援数:", Achievement.instance.getCurrentRankInfo_junxian().soldiers); // 添加调试日志
+        
         // 如果是池对象，通知对象池回收
         if (this.isPoolObject) {
             // 回收到对象池

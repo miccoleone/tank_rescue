@@ -26,12 +26,53 @@ export class HomePage extends Laya.Script {
     private static readonly ICON_TOP_MARGIN = 0.22; // 图标区域顶部边距（屏幕高度的22%）
     private static readonly ICON_SIZE = 48; // 图标大小
     
+    /** 服务器主机地址 */
+    // private static readonly HOST = "studydayday.cn"; // 生产环境
+    private static readonly HOST = "localhost:4396"; // 本地调试环境
+    
     constructor() {
         super();
+        // 初始化玩家信息
+        this.initializePlayerInfo();
+    }
+    
+    /**
+     * 初始化玩家信息
+     */
+    private initializePlayerInfo(): void {
+        // 检查是否已保存deviceId
+        let deviceId = Laya.LocalStorage.getItem("deviceId");
+        if (!deviceId) {
+            // 生成新的deviceId (UUID)
+            deviceId = this.generateUUID();
+            Laya.LocalStorage.setItem("deviceId", deviceId);
+        }
+        
+        // 检查是否已保存玩家昵称
+        let playerName = Laya.LocalStorage.getItem("playerName");
+        if (!playerName) {
+            // 生成默认昵称，使用当前时间毫秒值的后6位
+            const timestamp = Date.now().toString();
+            const lastSixDigits = timestamp.substring(timestamp.length - 6);
+            playerName = `玩家${lastSixDigits}`;
+            Laya.LocalStorage.setItem("playerName", playerName);
+        }
+        
         this.playerInfo = {
-            name: "我",
+            name: playerName,
             avatar: "resources/player_log.png"
         };
+    }
+    
+    /**
+     * 生成UUID
+     */
+    private generateUUID(): string {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            const r = Math.random() * 16 | 0;
+            const v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
     }
     
     onEnable(): void {
@@ -198,13 +239,46 @@ export class HomePage extends Laya.Script {
         
         avatarContainer.addChild(nameText);
 
+        // 创建编辑昵称按钮
+        const editButton = new Laya.Text();
+        editButton.text = "📝";
+        editButton.fontSize = Math.floor(avatar.height * 0.7);
+        editButton.color = "#FFFF00";
+        editButton.x = nameText.x + nameText.width + Math.floor(MARGIN * 0.2);
+        editButton.y = nameText.y;
+        editButton.on(Laya.Event.CLICK, this, () => {
+            // 检查玩家军衔是否达到营长
+            const currentRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
+            const requiredRank = MilitaryRank.BattalionCommander; // 营长
+            
+            // 简单的军衔比较（实际应用中可能需要更复杂的比较逻辑）
+            const rankOrder = [
+                MilitaryRank.Private, MilitaryRank.SquadLeader, MilitaryRank.PlatoonLeader,
+                MilitaryRank.CompanyCommander, MilitaryRank.BattalionCommander, MilitaryRank.RegimentalCommander,
+                MilitaryRank.BrigadeCommander, MilitaryRank.DivisionCommander, MilitaryRank.CorpsCommander,
+                MilitaryRank.ArmyCommander, MilitaryRank.FieldMarshal, MilitaryRank.GrandMarshal, MilitaryRank.Emperor
+            ];
+            
+            const currentRankIndex = rankOrder.indexOf(currentRank);
+            const requiredRankIndex = rankOrder.indexOf(requiredRank);
+            
+            if (currentRankIndex >= requiredRankIndex) {
+                // 军衔达到要求，可以修改昵称（暂不实现具体功能）
+                this.popupPanel.showMessage("军衔达到要求，可以修改昵称！", "提示");
+            } else {
+                // 军衔未达到要求
+                this.popupPanel.showMessage("军衔晋升至营长可自定义昵称！", "提示");
+            }
+        });
+        avatarContainer.addChild(editButton);
+
         // 创建军衔显示
         const militaryRankText = new Laya.Text();
         militaryRankText.name = "MilitaryRank";
         militaryRankText.text = Achievement.instance.getCurrentRankInfo_junxian().rank;
         militaryRankText.fontSize = Math.floor(avatar.height * 0.7);
         militaryRankText.color = "#4CAF50";
-        militaryRankText.x = nameText.x + nameText.width + Math.floor(MARGIN * 0.4);  // 在名字右边，留一些间距
+        militaryRankText.x = editButton.x + editButton.width + Math.floor(MARGIN * 0.2);  // 在编辑按钮右边，留一些间距
         militaryRankText.y = nameText.y;  // 与名字在同一行
         
         avatarContainer.addChild(militaryRankText);
@@ -441,7 +515,7 @@ export class HomePage extends Laya.Script {
                 this.popupPanel.hide();
                 return;
             }
-            this.showLeaderboard_month();
+            this.showRank();
         });
         
         // 添加触摸反馈效果
@@ -494,81 +568,467 @@ export class HomePage extends Laya.Script {
     }
     
     /**
-     * 显示排行榜
+     * 显示排行
      */
-    private showLeaderboard_month(): void {
-        // 获取玩家数据
-        const currentPlayerData = LeaderboardManager.instance.getMonthlyPlayerEntry();
+    private showRank(): void {
+        // 检查当前分钟是否已经获取过排行榜数据
+        const now = new Date();
+        const currentMinute = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()} ${now.getHours()}:${now.getMinutes()}`;
+        const lastFetchMinute = Laya.LocalStorage.getItem("playerClickRank");
         
-        this.popupPanel.show("最佳表现", (container: Laya.Sprite) => {
-            // 创建段位信息容器
-            const rankContainer = new Laya.Sprite();
-            rankContainer.pos(container.width/2, 30);
+        if (lastFetchMinute === currentMinute) {
+            // 当前分钟已经获取过数据，使用本地缓存
+            const cachedRankData = Laya.LocalStorage.getItem("cachedRankData");
+            if (cachedRankData) {
+                try {
+                    const rankData = JSON.parse(cachedRankData);
+                    console.log("使用本地缓存的排行榜数据");
+                    this.showRankPanel(rankData);
+                    return;
+                } catch (e) {
+                    console.error("解析本地缓存排行榜数据失败:", e);
+                }
+            }
+        }
+        
+        // 更新playerClickRank为当前分钟
+        Laya.LocalStorage.setItem("playerClickRank", currentMinute);
+        
+        // 创建默认的救援榜数据（写死的JSON数据）
+        const defaultRankData = {
+            "rescuelist": [
+                {
+                    "rank": 1,
+                    "nickName": "小崽啊你",
+                    "resuceMaxNumber": 754,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 2,
+                    "nickName": "奶思奶思",
+                    "resuceMaxNumber": 671,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 3,
+                    "nickName": "晴天",
+                    "resuceMaxNumber": 603,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 4,
+                    "nickName": "江西小袁",
+                    "resuceMaxNumber": 498,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 5,
+                    "nickName": "阿虎",
+                    "resuceMaxNumber": 322,
+                    "avatar": "resources/player_log.png"
+                }
+            ],
+            "junxianlist": [
+                {
+                    "rank": 1,
+                    "nickName": "书小华",
+                    "soldiers": 273167,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 2,
+                    "nickName": "云边小鱼",
+                    "soldiers": 79605,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 3,
+                    "nickName": "4396",
+                    "soldiers": 62132,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 4,
+                    "nickName": "海明威的小鲨鱼",
+                    "soldiers": 60397,
+                    "avatar": "resources/player_log.png"
+                },
+                {
+                    "rank": 5,
+                    "nickName": "凯特琳",
+                    "soldiers": 28319,
+                    "avatar": "resources/player_log.png"
+                }
+            ]
+        };
 
-            // 创建段位名称
-            const rankText = new Laya.Text();
-            const rankInfo = RankConfig.getRankByScore(currentPlayerData.score);
-            rankText.text = rankInfo.slogan;
-            rankText.fontSize = 24;
-            rankText.color = "#333333";
-            rankText.width = 102;  // 减小宽度，让图标更靠近文字
-            rankText.height = 32;
-            
-            // 创建段位图标
-            const rankIcon = new Laya.Image();
-            rankIcon.skin = rankInfo.icon;
-            rankIcon.width = 32;
-            rankIcon.height = 32;
-            
-            // 计算整体宽度并设置位置
-            // const spacing = 2;  // 减小文字和图标的间距
-            const totalWidth = rankText.width  + rankIcon.width;
-            rankContainer.pivot(totalWidth / 2, rankIcon.height / 2);
-            
-            // 设置文字和图标位置
-            rankText.pos(0, 4);
-            rankIcon.pos(rankText.width , 0);  // 图标紧跟在文字后面
-            
-            rankContainer.addChild(rankText);
-            rankContainer.addChild(rankIcon);
-            container.addChild(rankContainer);
+        // 尝试从服务器获取排行榜数据
+        this.fetchRankList(defaultRankData);
+    }
 
-            // 创建信息文本容器，垂直排列
-            const infoContainer = new Laya.Sprite();
-            infoContainer.width = container.width;
-            infoContainer.pos(0, 80);  // 减小与段位信息的间距
+    /**
+     * 从服务器获取排行榜数据
+     * @param defaultData 默认数据
+     */
+    private fetchRankList(defaultData: any): void {
+        // 获取玩家deviceId和昵称
+        const deviceId = Laya.LocalStorage.getItem("deviceId") || this.generateUUID();
+        const playerName = Laya.LocalStorage.getItem("playerName") || "玩家";
+        
+        // 获取玩家的历史最大救援数
+        const bestRescueData = Laya.LocalStorage.getItem("bestRescueCount");
+        const resuceMaxNumber = bestRescueData ? parseInt(bestRescueData) : 0;
+        
+        // 获取玩家的总士兵数（从成就系统中获取）
+        const achievementInfo = Achievement.instance.getCurrentRankInfo_junxian();
+        const soldiers = achievementInfo.soldiers;
+        
+        // 准备请求数据
+        const requestData = {
+            deviceId: deviceId,
+            nickName: playerName,
+            resuceMaxNumber: resuceMaxNumber,
+            soldiers: soldiers
+        };
 
-            // 创建分数信息
-            const scoreText = new Laya.Text();
-            scoreText.text = `最高分数: ${currentPlayerData.score}`;
-            scoreText.fontSize = 20;
-            scoreText.color = "#666666";
-            scoreText.width = container.width;
-            scoreText.align = "center";
-            infoContainer.addChild(scoreText);
+        console.log("发送排行榜请求数据:", requestData); // 添加调试日志
 
-            // 创建全国排名信息
-            const nationalRankText = new Laya.Text();
-            nationalRankText.text = `全国排名: ${currentPlayerData.rank}`;
-            nationalRankText.fontSize = 20;
-            nationalRankText.color = "#666666";
-            nationalRankText.width = container.width;
-            nationalRankText.align = "center";
-            nationalRankText.y = 40;  // 相对于上一个文本的位置
-            infoContainer.addChild(nationalRankText);
-
-            // 创建超越玩家百分比信息
-            const percentileText = new Laya.Text();
-            percentileText.text = `超越了${currentPlayerData.percentile}%的玩家`;
-            percentileText.fontSize = 20;
-            percentileText.color = "#4CAF50";
-            percentileText.width = container.width;
-            percentileText.align = "center";
-            percentileText.y = 80;  // 相对于上一个文本的位置
-            infoContainer.addChild(percentileText);
-
-            container.addChild(infoContainer);
+        // 使用XMLHttpRequest获取服务器数据
+        const xhr = new Laya.HttpRequest();
+        xhr.http.timeout = 10000; // 10秒超时
+        
+        xhr.once(Laya.Event.COMPLETE, this, (data: string) => {
+            try {
+                const response = JSON.parse(data);
+                console.log("从服务器获取排行榜原始数据:", response);
+                
+                // 检查响应是否成功
+                if (response.success) {
+                    // 转换数据格式以匹配前端期望的格式
+                    const rankData = {
+                        rescuelist: response.top5ByRescue.map((item: any, index: number) => ({
+                            rank: index + 1,
+                            nickName: item.nickName,
+                            resuceMaxNumber: item.resuceMaxNumber,
+                            avatar: item.avatar || "resources/player_log.png"
+                        })),
+                        junxianlist: response.top5BySoldiers.map((item: any, index: number) => ({
+                            rank: index + 1,
+                            nickName: item.nickName,
+                            soldiers: item.soldiers,
+                            avatar: item.avatar || "resources/player_log.png"
+                        }))
+                    };
+                    
+                    console.log("转换后的排行榜数据:", rankData);
+                    
+                    // 保存数据到本地缓存
+                    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD格式
+                    Laya.LocalStorage.setItem("lastRankFetchDate", today);
+                    Laya.LocalStorage.setItem("cachedRankData", JSON.stringify(rankData));
+                    
+                    // 显示服务器数据
+                    this.showRankPanel(rankData);
+                } else {
+                    console.error("服务器返回错误:", response.message);
+                    // 显示默认数据
+                    this.showRankPanel(defaultData);
+                }
+            } catch (e) {
+                console.error("解析服务器排行榜数据失败:", e);
+                // 显示默认数据
+                this.showRankPanel(defaultData);
+            }
         });
+        
+        xhr.once(Laya.Event.ERROR, this, (data: any) => {
+            console.error("从服务器获取排行榜数据失败:", data);
+            // 显示默认数据
+            this.showRankPanel(defaultData);
+        });
+        
+        // 发送POST请求获取排行榜数据
+        xhr.send(`http://${HomePage.HOST}/tank_rescue/ranklist`, 
+                 JSON.stringify(requestData), 
+                 "post", 
+                 "text",
+                 ["Content-Type", "application/json"]);
+    }
+
+    /**
+     * 显示排行榜面板
+     * @param rankData 排行榜数据
+     */
+    private showRankPanel(rankData: any): void {
+        this.popupPanel.show("排行", (container: Laya.Sprite) => {
+            // 创建Tab容器
+            const tabContainer = new Laya.Sprite();
+            tabContainer.pos(0, 0);
+            container.addChild(tabContainer);
+
+            // 创建救援榜Tab按钮
+            const rescueTab = new Laya.Text();
+            rescueTab.text = "救援榜";
+            rescueTab.fontSize = 20;
+            rescueTab.color = "#FFD700";
+            rescueTab.width = 100;
+            rescueTab.height = 40;
+            rescueTab.align = "center";
+            rescueTab.valign = "middle";
+            rescueTab.bgColor = "#4CAF50";
+            rescueTab.pos(50, 0);
+            rescueTab.name = "rescueTab";
+            tabContainer.addChild(rescueTab);
+
+            // 创建军衔榜Tab按钮
+            const junxianTab = new Laya.Text();
+            junxianTab.text = "军衔榜";
+            junxianTab.fontSize = 20;
+            junxianTab.color = "#333333";
+            junxianTab.width = 100;
+            junxianTab.height = 40;
+            junxianTab.align = "center";
+            junxianTab.valign = "middle";
+            junxianTab.bgColor = "#DDDDDD";
+            junxianTab.pos(200, 0);
+            junxianTab.name = "junxianTab";
+            tabContainer.addChild(junxianTab);
+
+            // 创建内容容器
+            const contentContainer = new Laya.Sprite();
+            contentContainer.pos(0, 50);
+            contentContainer.width = container.width;
+            contentContainer.height = container.height - 50;
+            container.addChild(contentContainer);
+
+            // 显示默认的救援榜
+            this.showRescueList(contentContainer, rankData.rescuelist);
+
+            // 添加Tab点击事件
+            rescueTab.on(Laya.Event.CLICK, this, () => {
+                // 更新Tab样式
+                rescueTab.color = "#FFD700";
+                rescueTab.bgColor = "#4CAF50";
+                junxianTab.color = "#333333";
+                junxianTab.bgColor = "#DDDDDD";
+                
+                // 清空内容容器
+                contentContainer.removeChildren();
+                
+                // 显示救援榜
+                this.showRescueList(contentContainer, rankData.rescuelist);
+            });
+
+            junxianTab.on(Laya.Event.CLICK, this, () => {
+                // 更新Tab样式
+                junxianTab.color = "#FFD700";
+                junxianTab.bgColor = "#4CAF50";
+                rescueTab.color = "#333333";
+                rescueTab.bgColor = "#DDDDDD";
+                
+                // 清空内容容器
+                contentContainer.removeChildren();
+                
+                // 显示军衔榜
+                this.showJunxianList(contentContainer, rankData.junxianlist);
+            });
+        }, {
+            width: 400,
+            height: 500
+        });
+    }
+
+    /**
+     * 显示救援榜列表
+     * @param container 容器
+     * @param rescueList 救援榜数据
+     */
+    private showRescueList(container: Laya.Sprite, rescueList: any[]): void {
+        // 创建排行榜标题
+        const title = new Laya.Text();
+        title.text = "救援人数排行榜";
+        title.fontSize = 18;
+        title.color = "#333333";
+        title.width = container.width;
+        title.align = "center";
+        title.y = 10;
+        container.addChild(title);
+
+        // 创建排行榜列表
+        for (let i = 0; i < rescueList.length; i++) {
+            const item = rescueList[i];
+            
+            // 创建排行项容器
+            const itemContainer = new Laya.Sprite();
+            itemContainer.width = container.width;
+            itemContainer.height = 50;
+            itemContainer.y = 40 + i * 60;
+            container.addChild(itemContainer);
+
+            // 创建排名
+            const rankText = new Laya.Text();
+            rankText.text = item.rank.toString();
+            rankText.fontSize = 20;
+            rankText.color = this.getRankColor(item.rank);
+            rankText.width = 30;
+            rankText.align = "center";
+            rankText.y = 15;
+            itemContainer.addChild(rankText);
+
+            // 创建头像
+            const avatar = new Laya.Image();
+            avatar.skin = item.avatar;
+            avatar.width = 40;
+            avatar.height = 40;
+            avatar.x = 40;
+            avatar.y = 5;
+            itemContainer.addChild(avatar);
+
+            // 创建玩家名称
+            const nameText = new Laya.Text();
+            nameText.text = item.nickName;
+            nameText.fontSize = 18;
+            nameText.color = "#333333";
+            nameText.x = 90;
+            nameText.y = 15;
+            itemContainer.addChild(nameText);
+
+            // 创建救援人数
+            const rescueCountText = new Laya.Text();
+            rescueCountText.text = item.resuceMaxNumber.toString();
+            rescueCountText.fontSize = 18;
+            rescueCountText.color = "#4CAF50";
+            rescueCountText.x = container.width - 100;
+            rescueCountText.y = 15;
+            itemContainer.addChild(rescueCountText);
+
+            // 创建"人"字
+            const renText = new Laya.Text();
+            renText.text = "人";
+            renText.fontSize = 18;
+            renText.color = "#4CAF50";
+            renText.x = container.width - 40;
+            renText.y = 15;
+            itemContainer.addChild(renText);
+        }
+    }
+
+    /**
+     * 显示军衔榜列表
+     * @param container 容器
+     * @param junxianList 军衔榜数据
+     */
+    private showJunxianList(container: Laya.Sprite, junxianList: any[]): void {
+        // 创建排行榜标题
+        const title = new Laya.Text();
+        title.text = "军衔等级排行榜";
+        title.fontSize = 18;
+        title.color = "#333333";
+        title.width = container.width;
+        title.align = "center";
+        title.y = 10;
+        container.addChild(title);
+
+        // 创建排行榜列表
+        for (let i = 0; i < junxianList.length; i++) {
+            const item = junxianList[i];
+            
+            // 创建排行项容器
+            const itemContainer = new Laya.Sprite();
+            itemContainer.width = container.width;
+            itemContainer.height = 50;
+            itemContainer.y = 40 + i * 60;
+            container.addChild(itemContainer);
+
+            // 创建排名
+            const rankText = new Laya.Text();
+            rankText.text = item.rank.toString();
+            rankText.fontSize = 20;
+            rankText.color = this.getRankColor(item.rank);
+            rankText.width = 30;
+            rankText.align = "center";
+            rankText.y = 15;
+            itemContainer.addChild(rankText);
+
+            // 创建头像
+            const avatar = new Laya.Image();
+            avatar.skin = item.avatar;
+            avatar.width = 40;
+            avatar.height = 40;
+            avatar.x = 40;
+            avatar.y = 5;
+            itemContainer.addChild(avatar);
+
+            // 创建玩家名称
+            const nameText = new Laya.Text();
+            nameText.text = item.nickName;
+            nameText.fontSize = 18;
+            nameText.color = "#333333";
+            nameText.x = 90;
+            nameText.y = 15;
+            itemContainer.addChild(nameText);
+
+            // 根据soldiers数量判断军衔
+            const militaryRank = this.getMilitaryRankBySoldiers(item.soldiers);
+            
+            // 创建军衔
+            const junxianText = new Laya.Text();
+            junxianText.text = militaryRank;
+            junxianText.fontSize = 18;
+            junxianText.color = "#FF9800";
+            junxianText.x = container.width - 120;
+            junxianText.y = 15;
+            itemContainer.addChild(junxianText);
+        }
+    }
+
+    /**
+     * 根据排名获取颜色
+     * @param rank 排名
+     * @returns 颜色值
+     */
+    private getRankColor(rank: number): string {
+        switch (rank) {
+            case 1: return "#FFD700"; // 金牌
+            case 2: return "#C0C0C0"; // 银牌
+            case 3: return "#CD7F32"; // 铜牌
+            default: return "#333333";
+        }
+    }
+    
+    /**
+     * 根据士兵数量获取军衔
+     * @param soldiers 士兵数量
+     * @returns 军衔名称
+     */
+    private getMilitaryRankBySoldiers(soldiers: number): string {
+        // 军衔配置（与Achievement.ts中的配置一致）
+        const rankConfigs = [
+            { name: "列兵", requiredSoldiers: 1 },
+            { name: "班长", requiredSoldiers: 12 },
+            { name: "排长", requiredSoldiers: 50 },
+            { name: "连长", requiredSoldiers: 200 },
+            { name: "营长", requiredSoldiers: 1000 },
+            { name: "团长", requiredSoldiers: 3000 },
+            { name: "旅长", requiredSoldiers: 8000 },
+            { name: "师长", requiredSoldiers: 15000 },
+            { name: "军长", requiredSoldiers: 50000 },
+            { name: "集团军司令", requiredSoldiers: 200000 },
+            { name: "元帅", requiredSoldiers: 500000 },
+            { name: "大元帅", requiredSoldiers: 1000000 },
+            { name: "皇帝", requiredSoldiers: 2000000 }
+        ];
+        
+        // 从高到低检查军衔要求
+        for (let i = rankConfigs.length - 1; i >= 0; i--) {
+            const config = rankConfigs[i];
+            if (soldiers >= config.requiredSoldiers) {
+                return config.name;
+            }
+        }
+        
+        // 默认返回最低军衔
+        return "列兵";
     }
 
     /**
@@ -604,7 +1064,7 @@ export class HomePage extends Laya.Script {
      */
     private showRescueModeLockedTip(): void {
         const unlockRankName = RescueModeUnlockManager.instance.getUnlockRankName();
-        this.popupPanel.showMessage(`无尽模式中达到${unlockRankName}表现将解锁救援模式`,"未解锁");
+        this.popupPanel.showMessage(`无尽模式中达到${unlockRankName}表现将解锁救援模式！`,"未解锁");
     }
 
     /**
