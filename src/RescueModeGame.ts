@@ -117,6 +117,11 @@ export class RescueModeGame extends Laya.Script {
     private tankBody: Laya.Image;
     private upgradeTankEffect: Laya.Sprite | null = null;
     private backgroundTiles: Laya.Sprite[] = [];
+    
+    // 添加皮肤管理属性
+    private originalTankSkin: string = "resources/Retina/tank1_red.png"; // 原始皮肤
+    private premiumTankSkin: string = "resources/Retina/tank2_red.png";  // 高级皮肤
+    
     // 开火按钮透明度常量
     private static readonly FIRE_BTN_NORMAL_ALPHA = 0.3;  // 正常状态透明度
     private static readonly FIRE_BTN_PRESSED_ALPHA = 0.8; // 按下状态透明度
@@ -552,8 +557,8 @@ export class RescueModeGame extends Laya.Script {
         // 创建坦克身体
         this.tankBody = new Laya.Image();
         
-        // 设置坦克皮肤 - 简化逻辑
-        this.tankBody.skin = this.currentTankSkin;
+        // 设置坦克皮肤 - 使用原始皮肤
+        this.tankBody.skin = this.originalTankSkin;
         this.tankBody.width = 30;  
         this.tankBody.height = 30; 
         this.tankBody.pivot(15, 15); 
@@ -674,6 +679,28 @@ export class RescueModeGame extends Laya.Script {
     }
 
     /**
+     * 应用高级坦克皮肤
+     */
+    private applyPremiumTankSkin(): void {
+        // 确保坦克身体存在
+        if (this.tankBody) {
+            // 应用高级皮肤
+            this.tankBody.skin = this.premiumTankSkin;
+        }
+    }
+
+    /**
+     * 恢复原始坦克皮肤
+     */
+    private restoreOriginalTankSkin(): void {
+        // 确保坦克身体存在
+        if (this.tankBody) {
+            // 恢复原始皮肤
+            this.tankBody.skin = this.originalTankSkin;
+        }
+    }
+
+    /**
      * 显示激励视频广告
      */
     private showRewardAd(): void {
@@ -705,20 +732,24 @@ export class RescueModeGame extends Laya.Script {
                 // 用户完整观看广告
                 // @ts-ignore
                 if (res && res.isEnded || res === undefined) {
-                    console.log("激励视频广告观看完成，获得超级子弹");
-                    this.popupPanel?.showFadeNotification("恭喜获得超级子弹！", 2000, "#FFD700");
+                    console.log("激励视频广告观看完成，获得超级子弹和炫酷皮肤");
+                    this.popupPanel?.showFadeNotification("获得超级子弹和超级皮肤！", 2000, "#FFD700");
                     // 设置子弹类型为超级子弹
                     setCurrentBulletType(BulletType.SUPER);
+                    // 应用高级皮肤
+                    this.applyPremiumTankSkin();
                 } else {
                     console.log("激励视频广告未完整观看");
                     this.popupPanel?.showFadeNotification("需要完整观看广告才能获得奖励", 2000, "#FF0000");
                 }
             });
         } else {
-            console.log("非微信环境，直接放行获得超级子弹");
-            this.popupPanel?.showFadeNotification("恭喜获得超级子弹！", 2000, "#FFD700");
+            console.log("非微信环境，直接放行获得超级子弹和炫酷皮肤");
+            this.popupPanel?.showFadeNotification("获得超级子弹和超级皮肤！", 2000, "#FFD700");
             // 非微信环境直接设置子弹类型为超级子弹，方便测试
             setCurrentBulletType(BulletType.SUPER);
+            // 应用高级皮肤
+            this.applyPremiumTankSkin();
         }
     }
 
@@ -821,13 +852,14 @@ export class RescueModeGame extends Laya.Script {
         bullet.rotation = this.tank.rotation;
         
         // 计算基础速度和段位加成
-        let baseSpeed = 10;
+        const isSuperBullet = getCurrentBulletType() === BulletType.SUPER;
+        let baseSpeed = isSuperBullet ? 11 : 10; // 超级子弹速度更快
         const currentRankInfo = this.getRankInfo(this.score);
         const rankBonus = Math.floor(Math.floor(this.score / RescueModeGame.POINTS_PER_RANK) / 4) * 1; // 每个大段位（4个小段位）增加1点速度
         let speed = baseSpeed + rankBonus;
         
-        // 限制最大速度不超过15
-        speed = Math.min(speed, 15);
+        // 限制最大速度不超过15或20（超级子弹）
+        speed = Math.min(speed, isSuperBullet ? 16 : 15);
         
         let vx = Math.cos(radian) * speed;
         let vy = Math.sin(radian) * speed;
@@ -1527,7 +1559,7 @@ export class RescueModeGame extends Laya.Script {
         // 先清理所有UI
         this.clearAllUI();
         
-        // 禁用开火按钮
+        // 要用开火按钮
         if (this.fireBtn) {
             this.fireBtn.setEnabled(false);
         }
@@ -1570,6 +1602,9 @@ export class RescueModeGame extends Laya.Script {
 
         // 检查军衔晋升 - 使用渐隐通知，不打断游戏
         this.checkRankPromotion();
+        
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
         
         // 重置超级子弹模式 - 使用新的基于type的方式
         console.log("玩家死亡时重置子弹类型");
@@ -1915,22 +1950,22 @@ export class RescueModeGame extends Laya.Script {
 
         // 添加视频图标
         const videoIcon = new Laya.Image();
-        videoIcon.skin = "resources/video.png";
+        videoIcon.skin = "resources/Retina/tank2_red.png";
         videoIcon.width = 40;
         videoIcon.height = 40;
-        videoIcon.pos(-80, 30);  // 图标位置保持不变
+        videoIcon.pos(-110, 30);  // 图标位置保持不变
         reviveButton.addChild(videoIcon);
 
         // 添加文本
         const buttonText = new Laya.Text();
-        buttonText.text = "免费复活";
-        buttonText.fontSize = 28;
+        buttonText.text = "免费复活&超级子弹";
+        buttonText.fontSize = 20;
         buttonText.color = "#333333";
-        buttonText.width = 160; 
+        buttonText.width = 200; 
         buttonText.height = 100;
         buttonText.align = "left"; 
         buttonText.valign = "middle";
-        buttonText.pos(-30, 0);  // 文字位置保持不变
+        buttonText.pos(-60, 0);  // 文字位置保持不变
         reviveButton.addChild(buttonText);
 
         // 改进点击区域设置 - 使用与按钮背景完全匹配的区域
@@ -2204,6 +2239,9 @@ export class RescueModeGame extends Laya.Script {
         setCurrentBulletType(BulletType.SUPER);
         console.log("玩家复活后获得持续超级子弹: currentBulletType=", getCurrentBulletType());
         
+        // 应用高级皮肤
+        this.applyPremiumTankSkin();
+        
         // 移除灰色滤镜
         this.gameBox.filters = null;
         
@@ -2229,7 +2267,7 @@ export class RescueModeGame extends Laya.Script {
             
             // 保持当前皮肤（当坦克未被销毁时需要手动更新皮肤）
             if (this.tankBody) {
-                this.tankBody.skin = this.currentTankSkin;
+                this.tankBody.skin = this.premiumTankSkin; // 使用高级皮肤
             }
         }
         
@@ -2260,6 +2298,9 @@ export class RescueModeGame extends Laya.Script {
         setCurrentBulletType(BulletType.DEFAULT);
         console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
         
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
+        
         // 移除灰色滤镜
         this.gameBox.filters = null;
         
@@ -2272,8 +2313,7 @@ export class RescueModeGame extends Laya.Script {
         }
         
         // 重置为初始皮肤（因为玩家未完整观看广告）
-        const initialSkin = PlayerTankSkinUtil.getInstance().getPlayerSkin(0);
-        this.currentTankSkin = initialSkin.skin;
+        this.currentTankSkin = this.originalTankSkin as TankSkinType;
         
         // 重置游戏数据
         this.score = 0;
@@ -2312,7 +2352,7 @@ export class RescueModeGame extends Laya.Script {
             
             // 应用初始皮肤
             if (this.tankBody) {
-                this.tankBody.skin = this.currentTankSkin;
+                this.tankBody.skin = this.originalTankSkin;
             }
         }
         
@@ -2747,6 +2787,9 @@ export class RescueModeGame extends Laya.Script {
         setCurrentBulletType(BulletType.DEFAULT);
         console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
         
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
+        
         // 重置敌方坦克状态，避免影响其他模式
         EnemyTank.updateSpeedStatus(false);
         EnemyTank.setGameActive(true);
@@ -2859,6 +2902,9 @@ export class RescueModeGame extends Laya.Script {
         console.log("玩家死亡时重置子弹类型");
         setCurrentBulletType(BulletType.DEFAULT);
         console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
+        
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
         
         // 立即显示插屏广告
         this.showInterstitialAd();

@@ -126,6 +126,10 @@ export class EndlessModeGame extends Laya.Script {
     private currentCountdownContainer: Laya.Sprite = null;
     private isGamePaused: boolean = false;
     
+    // 添加皮肤管理属性
+    private originalTankSkin: string = "resources/Retina/tank1_red.png"; // 原始皮肤
+    private premiumTankSkin: string = "resources/Retina/tank2_red.png";  // 高级皮肤
+    
     // 弹窗组件
     private popupPanel: PopupPanel;
     
@@ -268,7 +272,7 @@ export class EndlessModeGame extends Laya.Script {
         
         // 使用tank.png作为坦克图片
         let tankImage = new Laya.Image();
-        tankImage.skin = "resources/Retina/tank1_red.png";
+        tankImage.skin = this.originalTankSkin; // 使用原始皮肤属性
         tankImage.width = 30;
         tankImage.height = 30;
         tankImage.pivot(15, 15);
@@ -420,20 +424,54 @@ export class EndlessModeGame extends Laya.Script {
                 // 用户完整观看广告
                 // @ts-ignore
                 if (res && res.isEnded || res === undefined) {
-                    console.log("激励视频广告观看完成，获得超级子弹");
-                    this.popupPanel?.showFadeNotification("恭喜获得超级子弹！", 2000, "#FFD700");
+                    console.log("激励视频广告观看完成，获得超级子弹和炫酷皮肤");
+                    this.popupPanel?.showFadeNotification("获得超级子弹和超级皮肤！", 2000, "#FFD700");
                     // 设置子弹类型为超级子弹
                     setCurrentBulletType(BulletType.SUPER);
+                    // 应用高级皮肤
+                    this.applyPremiumTankSkin();
                 } else {
                     console.log("激励视频广告未完整观看");
                     this.popupPanel?.showFadeNotification("需要完整观看广告才能获得奖励", 2000, "#FF0000");
                 }
             });
         } else {
-            console.log("非微信环境，直接放行获得超级子弹");
-            this.popupPanel?.showFadeNotification("恭喜获得超级子弹！", 2000, "#FFD700");
+            console.log("非微信环境，直接放行获得超级子弹和炫酷皮肤");
+            this.popupPanel?.showFadeNotification("获得超级子弹和超级皮肤！", 2000, "#FFD700");
             // 非微信环境直接设置子弹类型为超级子弹，方便测试
             setCurrentBulletType(BulletType.SUPER);
+            // 应用高级皮肤
+            this.applyPremiumTankSkin();
+        }
+    }
+
+    /**
+     * 应用高级坦克皮肤
+     */
+    private applyPremiumTankSkin(): void {
+        // 确保坦克存在且有子元素
+        if (this.tank && this.tank.numChildren > 0) {
+            // 获取坦克图片元素
+            const tankImage = this.tank.getChildAt(0) as Laya.Image;
+            if (tankImage) {
+                // 应用高级皮肤
+                tankImage.skin = this.premiumTankSkin;
+            }
+        }
+    }
+
+    /**
+     * 恢复原始坦克皮肤
+     */
+    private restoreOriginalTankSkin(): void {
+        // 确保坦克存在且有子元素
+        if (this.tank && this.tank.numChildren > 0) {
+            // 获取坦克图片元素
+            const tankImage = this.tank.getChildAt(0) as Laya.Image;
+            if (tankImage) {
+                // 恢复原始皮肤
+                tankImage.skin = this.originalTankSkin;
+            }
         }
     }
 
@@ -1379,6 +1417,9 @@ export class EndlessModeGame extends Laya.Script {
         // 隐藏坦克
         this.tank.visible = false;
         
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
+        
         // 重置超级子弹模式 - 使用新的基于type的方式
         console.log("玩家死亡时重置子弹类型");
         setCurrentBulletType(BulletType.DEFAULT);
@@ -1463,22 +1504,22 @@ export class EndlessModeGame extends Laya.Script {
 
         // 添加视频图标
         const videoIcon = new Laya.Image();
-        videoIcon.skin = "resources/video.png";
+        videoIcon.skin = "resources/Retina/tank2_red.png";
         videoIcon.width = 40;
         videoIcon.height = 40;
-        videoIcon.pos(-80, 30);
+        videoIcon.pos(-110, 30);  // 图标位置保持不变
         reviveButton.addChild(videoIcon);
 
         // 添加文本
         const buttonText = new Laya.Text();
-        buttonText.text = "免费复活";
-        buttonText.fontSize = 28;
+        buttonText.text = "免费复活&超级子弹";
+        buttonText.fontSize = 20;
         buttonText.color = "#333333";
-        buttonText.width = 160;
+        buttonText.width = 200; 
         buttonText.height = 100;
-        buttonText.align = "left";
+        buttonText.align = "left"; 
         buttonText.valign = "middle";
-        buttonText.pos(-30, 0);
+        buttonText.pos(-60, 0);  // 文字位置保持不变
         reviveButton.addChild(buttonText);
 
         // 设置点击区域
@@ -1733,6 +1774,9 @@ export class EndlessModeGame extends Laya.Script {
         setCurrentBulletType(BulletType.SUPER);
         console.log("玩家复活后获得持续超级子弹: currentBulletType=", getCurrentBulletType());
         
+        // 应用高级皮肤
+        this.applyPremiumTankSkin();
+        
         // 移除灰色滤镜
         this.gameBox.filters = null;
         
@@ -1776,6 +1820,9 @@ export class EndlessModeGame extends Laya.Script {
         console.log("重置游戏时重置子弹类型");
         setCurrentBulletType(BulletType.DEFAULT);
         console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
+        
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
         
         // 移除灰色滤镜
         this.gameBox.filters = null;
@@ -2016,6 +2063,9 @@ export class EndlessModeGame extends Laya.Script {
         setCurrentBulletType(BulletType.DEFAULT);
         console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
         
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
+        
         // 停止所有计时器
         Laya.timer.clearAll(this);
         
@@ -2091,6 +2141,9 @@ export class EndlessModeGame extends Laya.Script {
         console.log("重置子弹类型");
         setCurrentBulletType(BulletType.DEFAULT);
         console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
+        
+        // 恢复原始皮肤
+        this.restoreOriginalTankSkin();
         
         // 清理所有计时器和动画
         Laya.timer.clearAll(this);
