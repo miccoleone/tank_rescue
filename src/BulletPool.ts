@@ -27,7 +27,7 @@ export class BulletPool {
         }
         
         // 确保子弹状态重置
-        bullet.alpha = 0.9;
+        bullet.alpha = 0.8;
         bullet.rotation = 0;
         bullet.scale(1, 1);
         return bullet;
@@ -62,13 +62,16 @@ export class BulletPool {
     private createBullet(): Laya.Sprite {
         const bullet = new Laya.Sprite();
         const bulletImage = new Laya.Image();
-        bulletImage.skin = "resources/Retina/shotThin.png";
-        bulletImage.width = 8;
-        bulletImage.height = 26;
-        bulletImage.pivot(4, 13);
+        // bulletImage.skin = "resources/Retina/shotThin.png";
+        bulletImage.skin = "resources/Retina/barrelBlack_side.png";
+        // bulletImage.width = 16;
+        // bulletImage.height = 40;
+        // bulletImage.pivot(8, 20);
         bulletImage.rotation = 90;
+        bulletImage.scale(0.7, 0.7);
+        bulletImage.pivot(bulletImage.width / 2, bulletImage.height / 2);
         bullet.addChild(bulletImage);
-        bullet.alpha = 0.9;
+        bullet.alpha = 0.5;
         return bullet;
     }
 } 

@@ -87,14 +87,19 @@ export class ResourceManager extends Laya.Script {
         console.log("Clearing all resources");
         
         // 停止所有音效
-        // Laya.SoundManager.stopAll();
+        Laya.SoundManager.stopAllSound();
+        Laya.SoundManager.stopMusic();
         
         // 清理所有计时器
         Laya.timer.clearAll(this);
         
         // 清理所有已加载的资源
         this.loadedResources.forEach(url => {
-            Laya.loader.clearRes(url);
+            try {
+                Laya.loader.clearRes(url);
+            } catch (e) {
+                console.warn(`Failed to clear resource: ${url}`, e);
+            }
         });
         this.loadedResources.clear();
         

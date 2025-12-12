@@ -78,22 +78,36 @@ export class SceneManager extends Laya.Script {
                 // 清理所有资源
                 ResourceManager.instance.clearAll();
                 
-                // 延迟一帧再销毁场景，确保其他清理操作完成
-                console.log("Scheduling scene destruction for next frame");
-                Laya.timer.frameOnce(1, this, () => {
+                // 强制垃圾回收（如果可用）
+                if (typeof (window as any).gc !== 'undefined') {
+                    (window as any).gc();
+                }
+                
+                // 延迟几帧再销毁场景，确保其他清理操作完成
+                console.log("Scheduling scene destruction for next frames");
+                Laya.timer.frameOnce(3, this, () => {
                     // 销毁场景
                     console.log("Destroying scene");
-                    this.currentScene.destroy(true);
+                    if (this.currentScene && !this.currentScene.destroyed) {
+                        this.currentScene.destroy(true);
+                    }
                     this.currentScene = null;
                     
-                    // 创建新场景
-                    console.log("Creating new scene");
-                    this.createNewScene(sceneName);
+                    // 延迟创建新场景，确保销毁完成
+                    Laya.timer.frameOnce(1, this, () => {
+                        console.log("Creating new scene");
+                        this.createNewScene(sceneName);
+                    });
                 });
             } catch (e) {
                 console.error("场景销毁出错:", e);
                 // 即使出错也尝试创建新场景
                 console.log("Attempting to create new scene despite error");
+                // 确保当前场景被销毁
+                if (this.currentScene && !this.currentScene.destroyed) {
+                    this.currentScene.destroy(true);
+                }
+                this.currentScene = null;
                 this.createNewScene(sceneName);
             }
         } else {
