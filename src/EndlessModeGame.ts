@@ -1,6 +1,6 @@
 const { regClass, property } = Laya;
 import { Joystick } from "./Joystick";
-import { BulletPool } from "./BulletPool";
+import { BulletPool, BulletType, setCurrentBulletType, getCurrentBulletType } from "./BulletPool";
 import { Box, BoxType } from "./Box";
 import { ExplosionManager } from "./ExplosionManager";
 import { EnemyTank } from "./EnemyTank";
@@ -199,6 +199,8 @@ export class EndlessModeGame extends Laya.Script {
         this.initJoystick();
         // 初始化开火按钮
         this.initFireButton();
+        // 初始化激励视频广告按钮
+        this.initRewardAdButton();
         // 初始化积分和段位显示
         this.initScoreDisplay();
         // 初始化排行榜按钮
@@ -324,6 +326,114 @@ export class EndlessModeGame extends Laya.Script {
             Math.round(Laya.stage.width - horizontalMargin),
             Math.round(Laya.stage.height - verticalMargin)
         );
+    }
+
+    /**
+     * 初始化激励视频广告按钮
+     */
+    private initRewardAdButton(): void {
+        // 创建广告按钮容器
+        const adButtonContainer = new Laya.Sprite();
+        adButtonContainer.name = "RewardAdButton";
+        this.owner.addChild(adButtonContainer);
+
+        // 创建按钮背景（圆形）
+        const buttonBg = new Laya.Image();
+        buttonBg.skin = "resources/circle_60.png"; // 使用白色圆形背景
+        buttonBg.width = 100;  // 半径为50
+        buttonBg.height = 100;
+        buttonBg.pivot(50, 50); // 设置轴心点为中心
+        buttonBg.alpha = 0.3;   // 设置透明度
+        buttonBg.name = "AdButtonBg";
+        buttonBg.mouseEnabled = true;
+        buttonBg.mouseThrough = false;
+        adButtonContainer.addChild(buttonBg);
+
+        // 创建图标
+        const icon = new Laya.Image();
+        icon.skin = "resources/Retina/barrelBlack_side.png";
+        icon.width = 60;   // 图标半径为30
+        icon.height = 60;
+        icon.pivot(30, 30); // 设置轴心点为中心
+        icon.alpha = 0.8;
+        adButtonContainer.addChild(icon);
+
+        // 设置按钮位置：水平方向距离右侧0.1，垂直方向居中
+        const horizontalMargin = Math.round(Laya.stage.width * 0.1);
+        const verticalCenter = Math.round(Laya.stage.height / 2);
+        adButtonContainer.pos(
+            Math.round(Laya.stage.width - horizontalMargin),
+            verticalCenter
+        );
+
+        // 添加按钮事件监听
+        buttonBg.on(Laya.Event.MOUSE_DOWN, this, () => {
+            // 按钮按下效果
+            buttonBg.alpha = 0.8;
+        });
+        
+        buttonBg.on(Laya.Event.MOUSE_UP, this, () => {
+            // 恢复按钮效果
+            buttonBg.alpha = 0.3;
+            // 播放点击音效
+            Laya.SoundManager.playSound("resources/click.mp3", 1);
+            // 显示激励视频广告
+            this.showRewardAd();
+        });
+        
+        buttonBg.on(Laya.Event.MOUSE_OUT, this, () => {
+            // 恢复按钮效果
+            buttonBg.alpha = 0.3;
+        });
+    }
+
+    /**
+     * 显示激励视频广告
+     */
+    private showRewardAd(): void {
+        // 检查是否在微信环境中
+        // @ts-ignore
+        if (typeof wx !== 'undefined' && this.videoAd) {
+            console.log("正在拉起激励视频广告...");
+            
+            // 显示微信广告
+            this.videoAd.show().catch(() => {
+                // 失败重试一次
+                this.videoAd.load()
+                    .then(() => {
+                        this.videoAd.show();
+                    })
+                    .catch(() => {
+                        console.error('激励视频广告显示失败');
+                        this.popupPanel?.showMessage("广告加载失败，请稍后再试", "提示");
+                    });
+            });
+            
+            // 监听广告关闭事件
+            // @ts-ignore
+            this.videoAd.onClose(res => {
+                // 取消监听，避免多次触发
+                this.videoAd.offClose();
+                console.log("激励视频广告关闭", res);
+                
+                // 用户完整观看广告
+                // @ts-ignore
+                if (res && res.isEnded || res === undefined) {
+                    console.log("激励视频广告观看完成，获得超级子弹");
+                    this.popupPanel?.showFadeNotification("恭喜获得超级子弹！", 2000, "#FFD700");
+                    // 设置子弹类型为超级子弹
+                    setCurrentBulletType(BulletType.SUPER);
+                } else {
+                    console.log("激励视频广告未完整观看");
+                    this.popupPanel?.showFadeNotification("需要完整观看广告才能获得奖励", 2000, "#FF0000");
+                }
+            });
+        } else {
+            console.log("非微信环境，直接放行获得超级子弹");
+            this.popupPanel?.showFadeNotification("恭喜获得超级子弹！", 2000, "#FFD700");
+            // 非微信环境直接设置子弹类型为超级子弹，方便测试
+            setCurrentBulletType(BulletType.SUPER);
+        }
     }
 
     private onJoystickMove(angle: number, strength: number): void {
@@ -497,7 +607,7 @@ export class EndlessModeGame extends Laya.Script {
         this.fireSound.volume = 0.6;
         
         // 从对象池获取子弹
-        let bullet = BulletPool.instance.getItem(EndlessModeGame.BULLET_SIGN);
+        let bullet = BulletPool.instance.getItem();
         if (!bullet) return;
         
         bullet.name = "Bullet_" + this.bullets.length;
@@ -578,15 +688,15 @@ export class EndlessModeGame extends Laya.Script {
         
         // 从数组中移除
         const index = this.bullets.indexOf(bullet);
-                if (index > -1) {
-                    this.bullets.splice(index, 1);
-                }
+        if (index > -1) {
+            this.bullets.splice(index, 1);
+        }
         
         // 清理定时器
-                Laya.timer.clearAll(bullet);
+        Laya.timer.clearAll(bullet);
         
         // 回收到对象池
-                BulletPool.instance.recover(EndlessModeGame.BULLET_SIGN, bullet);
+        BulletPool.instance.recover(bullet);
     }
 
     private checkBulletCollision(bullet: Laya.Sprite, target: Box): boolean {
@@ -1268,6 +1378,11 @@ export class EndlessModeGame extends Laya.Script {
         // 隐藏坦克
         this.tank.visible = false;
         
+        // 重置超级子弹模式 - 使用新的基于type的方式
+        console.log("玩家死亡时重置子弹类型");
+        setCurrentBulletType(BulletType.DEFAULT);
+        console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
+        
         // 立即显示插屏广告
         this.showInterstitialAd();
         
@@ -1612,6 +1727,11 @@ export class EndlessModeGame extends Laya.Script {
      */
     private revivePlayer(): void {
         console.log("执行玩家复活");
+        // 给玩家持续超级子弹模式
+        console.log("复活时给予玩家持续超级子弹模式");
+        setCurrentBulletType(BulletType.SUPER);
+        console.log("玩家复活后获得持续超级子弹: currentBulletType=", getCurrentBulletType());
+        
         // 移除灰色滤镜
         this.gameBox.filters = null;
         
@@ -1651,6 +1771,11 @@ export class EndlessModeGame extends Laya.Script {
      */
     private resetGame(): void {
         console.log("执行游戏重置");
+        // 重置子弹类型为默认
+        console.log("重置游戏时重置子弹类型");
+        setCurrentBulletType(BulletType.DEFAULT);
+        console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
+        
         // 移除灰色滤镜
         this.gameBox.filters = null;
         
@@ -1885,6 +2010,11 @@ export class EndlessModeGame extends Laya.Script {
     }
 
     private destroyGame(): void {
+        // 重置子弹类型为默认
+        console.log("销毁游戏时重置子弹类型");
+        setCurrentBulletType(BulletType.DEFAULT);
+        console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
+        
         // 停止所有计时器
         Laya.timer.clearAll(this);
         
@@ -1955,6 +2085,11 @@ export class EndlessModeGame extends Laya.Script {
     onDestroy(): void {
         // 销毁游戏
         this.destroyGame();
+        
+        // 重置子弹类型为默认
+        console.log("重置子弹类型");
+        setCurrentBulletType(BulletType.DEFAULT);
+        console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
         
         // 清理所有计时器和动画
         Laya.timer.clearAll(this);

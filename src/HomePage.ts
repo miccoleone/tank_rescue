@@ -6,6 +6,7 @@ import { PopupPanel } from "./PopupPanel";
 import { Achievement, MilitaryRank } from "./Achievement";
 import { TutorialManager } from "./TutorialManager";
 import { RescueModeUnlockManager } from "./RescueModeUnlockManager";
+import { BulletType, setCurrentBulletType, getCurrentBulletType } from "./BulletPool";
 
 // 添加微信小游戏API的类型声明
 declare const wx: {
@@ -78,6 +79,177 @@ export class HomePage extends Laya.Script {
     }
     
     /**
+     * 刷新玩家信息区域
+     */
+    private refreshPlayerInfo(): void {
+        // 重新初始化玩家信息
+        this.initializePlayerInfo();
+        
+        // 查找玩家区域
+        const playerSection = this.owner.getChildByName("PlayerSection") as Laya.Sprite;
+        if (!playerSection) return;
+        
+        // 删除现有的AvatarContainer和TodayStatsContainer
+        const existingAvatarContainer = playerSection.getChildByName("AvatarContainer");
+        if (existingAvatarContainer) {
+            existingAvatarContainer.destroy(true);
+        }
+        
+        const existingTodayStatsContainer = playerSection.getChildByName("TodayStatsContainer");
+        if (existingTodayStatsContainer) {
+            existingTodayStatsContainer.destroy(true);
+        }
+        
+        // 重新创建玩家信息区域
+        this.createPlayerInfoContent(playerSection);
+    }
+    
+    /**
+     * 创建玩家信息内容（用于刷新）
+     */
+    private createPlayerInfoContent(container: Laya.Sprite): void {
+        // 根据屏幕尺寸动态计算边距
+        const MARGIN = Math.min(Laya.stage.width, Laya.stage.height) * 0.06;
+        
+        // 创建头像容器
+        const avatarContainer = new Laya.Sprite();
+        avatarContainer.name = "AvatarContainer";
+        avatarContainer.x = MARGIN * 3;
+        avatarContainer.y = MARGIN;
+        
+        // 创建头像
+        const avatar = new Laya.Image();
+        avatar.name = "Avatar";
+        avatar.skin = this.playerInfo.avatar;
+        avatar.width = 40;
+        avatar.height = 40;
+        avatar.x = 0;
+        avatar.y = 0;
+        
+        avatarContainer.addChild(avatar);
+        
+        // 创建玩家名称
+        const nameText = new Laya.Text();
+        nameText.name = "PlayerName";
+        nameText.text = this.playerInfo.name;
+        nameText.fontSize = Math.floor(avatar.height * 0.7);
+        nameText.color = "#ffffff";
+        nameText.x = avatar.width + Math.floor(MARGIN * 0.2);
+        nameText.y = (avatar.height - nameText.fontSize) / 2;
+        
+        avatarContainer.addChild(nameText);
+
+        // 创建编辑昵称按钮
+        const editButton = new Laya.Text();
+        editButton.text = "📝";
+        editButton.fontSize = Math.floor(avatar.height * 0.7);
+        editButton.color = "#FFFF00";
+        editButton.x = nameText.x + nameText.width + Math.floor(MARGIN * 0.2);
+        editButton.y = nameText.y;
+        editButton.on(Laya.Event.CLICK, this, () => {
+            // 检查玩家军衔是否达到营长
+            const currentRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
+            const requiredRank = MilitaryRank.BattalionCommander; // 营长
+            
+            // 简单的军衔比较（实际应用中可能需要更复杂的比较逻辑）
+            const rankOrder = [
+                MilitaryRank.Private, MilitaryRank.SquadLeader, MilitaryRank.PlatoonLeader,
+                MilitaryRank.CompanyCommander, MilitaryRank.BattalionCommander, MilitaryRank.RegimentalCommander,
+                MilitaryRank.BrigadeCommander, MilitaryRank.DivisionCommander, MilitaryRank.CorpsCommander,
+                MilitaryRank.ArmyCommander, MilitaryRank.FieldMarshal, MilitaryRank.GrandMarshal, MilitaryRank.Emperor
+            ];
+            
+            const currentRankIndex = rankOrder.indexOf(currentRank);
+            const requiredRankIndex = rankOrder.indexOf(requiredRank);
+            
+            if (currentRankIndex >= requiredRankIndex) {
+                // 军衔达到要求，可以修改昵称（暂不实现具体功能）
+                this.popupPanel.showMessage("军衔达到要求，可以修改昵称！", "提示");
+            } else {
+                // 军衔未达到要求
+                this.popupPanel.showMessage("军衔晋升至营长可自定义昵称！", "提示");
+            }
+        });
+        avatarContainer.addChild(editButton);
+
+        // 创建今日战绩容器
+        const todayStatsContainer = new Laya.Sprite();
+        todayStatsContainer.name = "TodayStatsContainer";
+        todayStatsContainer.x = avatarContainer.x;
+        todayStatsContainer.y = avatarContainer.y + avatar.height + MARGIN;
+        
+        // 创建今日战绩标题
+        const todayTitle = new Laya.Text();
+        todayTitle.text = "今日战绩";
+        todayTitle.fontSize = Math.floor(avatar.height * 0.5);
+        todayTitle.color = "#FFFF00";
+        todayTitle.stroke = 2;
+        todayTitle.strokeColor = "#000000";
+        
+        // 获取玩家数据
+        const currentPlayerData = LeaderboardManager.instance.getCurrentPlayerEntry();
+        const rankInfo = RankConfig.getRankByScore(currentPlayerData.score);
+        
+        // 创建段位信息容器
+        const rankContainer = new Laya.Sprite();
+        rankContainer.y = todayTitle.fontSize + MARGIN * 0.5;  // 放在标题下方
+        
+        // 创建段位名称
+        const rankText = new Laya.Text();
+        rankText.text = rankInfo.slogan;
+        rankText.fontSize = Math.floor(avatar.height * 0.5);
+        rankText.color = "#ffffff";  // 改为黄色，与标题颜色一致
+        rankText.stroke = 2;  // 添加描边
+        rankText.strokeColor = "#000000";  // 黑色描边
+        rankContainer.addChild(rankText);
+        
+        // 创建段位图标
+        const rankIcon = new Laya.Image();
+        rankIcon.skin = rankInfo.icon;
+        rankIcon.width = 32;
+        rankIcon.height = 32;
+        rankIcon.x = rankText.width + 4;  // 放在文字后面，间距4像素
+        rankIcon.y = (rankText.height - rankIcon.height) / 2;  // 垂直居中对齐
+        rankContainer.addChild(rankIcon);
+        
+        // 创建今日最高分数
+        const todayScoreText = new Laya.Text();
+        todayScoreText.text = `最高得分: ${currentPlayerData.score}`;
+        todayScoreText.fontSize = Math.floor(avatar.height * 0.5);
+        todayScoreText.color = "#ffffff";
+        todayScoreText.stroke = 2;  // 添加描边
+        todayScoreText.y = rankContainer.y + rankText.fontSize + MARGIN * 0.5;  // 使用rankText.fontSize代替rankIcon.height
+        
+        // 替换今日排名为救援模式数据
+        // 每次创建时都重新获取最新的数据
+        const bestRescueCount = Laya.LocalStorage.getItem("bestRescueCount") || "0";
+        const todayRankText = new Laya.Text();
+        todayRankText.text = `救援 ${bestRescueCount}名士兵🪖`;
+        todayRankText.fontSize = todayScoreText.fontSize;
+        todayRankText.color = "#ffffff";
+        todayRankText.stroke = 2;  // 添加描边
+        todayRankText.y = todayScoreText.y + todayScoreText.fontSize + MARGIN * 0.5;  // 增加行间距
+        
+        // 替换超越百分比为军衔数据
+        const playerRankInfo = Achievement.instance.getCurrentRankInfo_junxian();
+        const todayPercentText = new Laya.Text();
+        todayPercentText.text = `军衔：${playerRankInfo.rank}`;
+        todayPercentText.fontSize = todayScoreText.fontSize;
+        todayPercentText.color = "#4CAF50";
+        todayPercentText.stroke = 2;  // 添加描边
+        todayPercentText.y = todayRankText.y + todayRankText.fontSize + MARGIN * 0.5;  // 增加行间距
+        
+        todayStatsContainer.addChild(todayTitle);
+        todayStatsContainer.addChild(rankContainer);
+        todayStatsContainer.addChild(todayScoreText);
+        todayStatsContainer.addChild(todayRankText);
+        todayStatsContainer.addChild(todayPercentText);
+        
+        container.addChild(avatarContainer);
+        container.addChild(todayStatsContainer);
+    }
+    
+    /**
      * 生成UUID
      */
     private generateUUID(): string {
@@ -90,6 +262,9 @@ export class HomePage extends Laya.Script {
     
     onEnable(): void {
         console.log("HomePage onEnable");
+        
+        // 每次启用时刷新玩家信息区域
+        this.refreshPlayerInfo();
         
         // 每次启用时检查救援模式解锁状态并更新按钮
         this.updateRescueModeButtonState();
@@ -208,7 +383,7 @@ export class HomePage extends Laya.Script {
         this.owner.addChild(iconSection);
         
         // 创建各个区域的内容
-        this.createPlayerInfo(playerSection);
+        this.createPlayerInfoContent(playerSection);
         this.createGameModes(endlessSection, saveSection);
         this.createIconBar(iconSection);
     }
@@ -240,150 +415,6 @@ export class HomePage extends Laya.Script {
         bg.y = (Laya.stage.height - bg.height) / 2;
         
         this.owner.addChild(bg);
-    }
-    
-    /**
-     * 创建玩家信息区域
-     */
-    private createPlayerInfo(container: Laya.Sprite): void {
-        // 根据屏幕尺寸动态计算边距
-        const MARGIN = Math.min(Laya.stage.width, Laya.stage.height) * 0.06;
-        
-        // 创建头像容器
-        const avatarContainer = new Laya.Sprite();
-        avatarContainer.name = "AvatarContainer";
-        avatarContainer.x = MARGIN * 3;
-        avatarContainer.y = MARGIN;
-        
-        // 创建头像
-        const avatar = new Laya.Image();
-        avatar.name = "Avatar";
-        avatar.skin = this.playerInfo.avatar;
-        avatar.width = 40;
-        avatar.height = 40;
-        avatar.x = 0;
-        avatar.y = 0;
-        
-        avatarContainer.addChild(avatar);
-        
-        // 创建玩家名称
-        const nameText = new Laya.Text();
-        nameText.name = "PlayerName";
-        nameText.text = this.playerInfo.name;
-        nameText.fontSize = Math.floor(avatar.height * 0.7);
-        nameText.color = "#ffffff";
-        nameText.x = avatar.width + Math.floor(MARGIN * 0.2);
-        nameText.y = (avatar.height - nameText.fontSize) / 2;
-        
-        avatarContainer.addChild(nameText);
-
-        // 创建编辑昵称按钮
-        const editButton = new Laya.Text();
-        editButton.text = "📝";
-        editButton.fontSize = Math.floor(avatar.height * 0.7);
-        editButton.color = "#FFFF00";
-        editButton.x = nameText.x + nameText.width + Math.floor(MARGIN * 0.2);
-        editButton.y = nameText.y;
-        editButton.on(Laya.Event.CLICK, this, () => {
-            // 检查玩家军衔是否达到营长
-            const currentRank = Achievement.instance.getCurrentRankInfo_junxian().rank;
-            const requiredRank = MilitaryRank.BattalionCommander; // 营长
-            
-            // 简单的军衔比较（实际应用中可能需要更复杂的比较逻辑）
-            const rankOrder = [
-                MilitaryRank.Private, MilitaryRank.SquadLeader, MilitaryRank.PlatoonLeader,
-                MilitaryRank.CompanyCommander, MilitaryRank.BattalionCommander, MilitaryRank.RegimentalCommander,
-                MilitaryRank.BrigadeCommander, MilitaryRank.DivisionCommander, MilitaryRank.CorpsCommander,
-                MilitaryRank.ArmyCommander, MilitaryRank.FieldMarshal, MilitaryRank.GrandMarshal, MilitaryRank.Emperor
-            ];
-            
-            const currentRankIndex = rankOrder.indexOf(currentRank);
-            const requiredRankIndex = rankOrder.indexOf(requiredRank);
-            
-            if (currentRankIndex >= requiredRankIndex) {
-                // 军衔达到要求，可以修改昵称（暂不实现具体功能）
-                this.popupPanel.showMessage("军衔达到要求，可以修改昵称！", "提示");
-            } else {
-                // 军衔未达到要求
-                this.popupPanel.showMessage("军衔晋升至营长可自定义昵称！", "提示");
-            }
-        });
-        avatarContainer.addChild(editButton);
-
-        // 创建今日战绩容器
-        const todayStatsContainer = new Laya.Sprite();
-        todayStatsContainer.name = "TodayStatsContainer";
-        todayStatsContainer.x = avatarContainer.x;
-        todayStatsContainer.y = avatarContainer.y + avatar.height + MARGIN;
-        
-        // 创建今日战绩标题
-        const todayTitle = new Laya.Text();
-        todayTitle.text = "今日战绩";
-        todayTitle.fontSize = Math.floor(avatar.height * 0.5);
-        todayTitle.color = "#FFFF00";
-        todayTitle.stroke = 2;
-        todayTitle.strokeColor = "#000000";
-        
-        // 获取玩家数据
-        const currentPlayerData = LeaderboardManager.instance.getCurrentPlayerEntry();
-        const rankInfo = RankConfig.getRankByScore(currentPlayerData.score);
-        
-        // 创建段位信息容器
-        const rankContainer = new Laya.Sprite();
-        rankContainer.y = todayTitle.fontSize + MARGIN * 0.5;  // 放在标题下方
-        
-        // 创建段位名称
-        const rankText = new Laya.Text();
-        rankText.text = rankInfo.slogan;
-        rankText.fontSize = Math.floor(avatar.height * 0.5);
-        rankText.color = "#ffffff";  // 改为黄色，与标题颜色一致
-        rankText.stroke = 2;  // 添加描边
-        rankText.strokeColor = "#000000";  // 黑色描边
-        rankContainer.addChild(rankText);
-        
-        // 创建段位图标
-        const rankIcon = new Laya.Image();
-        rankIcon.skin = rankInfo.icon;
-        rankIcon.width = 32;
-        rankIcon.height = 32;
-        rankIcon.x = rankText.width + 4;  // 放在文字后面，间距4像素
-        rankIcon.y = (rankText.height - rankIcon.height) / 2;  // 垂直居中对齐
-        rankContainer.addChild(rankIcon);
-        
-        // 创建今日最高分数
-        const todayScoreText = new Laya.Text();
-        todayScoreText.text = `最高得分: ${currentPlayerData.score}`;
-        todayScoreText.fontSize = Math.floor(avatar.height * 0.5);
-        todayScoreText.color = "#ffffff";
-        todayScoreText.stroke = 2;  // 添加描边
-        todayScoreText.y = rankContainer.y + rankText.fontSize + MARGIN * 0.5;  // 使用rankText.fontSize代替rankIcon.height
-        
-        // 替换今日排名为救援模式数据
-        const bestRescueCount = Laya.LocalStorage.getItem("bestRescueCount") || "0";
-        const todayRankText = new Laya.Text();
-        todayRankText.text = `救援 ${bestRescueCount}名士兵🪖`;
-        todayRankText.fontSize = todayScoreText.fontSize;
-        todayRankText.color = "#ffffff";
-        todayRankText.stroke = 2;  // 添加描边
-        todayRankText.y = todayScoreText.y + todayScoreText.fontSize + MARGIN * 0.5;  // 增加行间距
-        
-        // 替换超越百分比为军衔数据
-        const playerRankInfo = Achievement.instance.getCurrentRankInfo_junxian();
-        const todayPercentText = new Laya.Text();
-        todayPercentText.text = `军衔：${playerRankInfo.rank}`;
-        todayPercentText.fontSize = todayScoreText.fontSize;
-        todayPercentText.color = "#4CAF50";
-        todayPercentText.stroke = 2;  // 添加描边
-        todayPercentText.y = todayRankText.y + todayRankText.fontSize + MARGIN * 0.5;  // 增加行间距
-        
-        todayStatsContainer.addChild(todayTitle);
-        todayStatsContainer.addChild(rankContainer);
-        todayStatsContainer.addChild(todayScoreText);
-        todayStatsContainer.addChild(todayRankText);
-        todayStatsContainer.addChild(todayPercentText);
-        
-        container.addChild(avatarContainer);
-        container.addChild(todayStatsContainer);
     }
     
     /**
@@ -1403,6 +1434,10 @@ export class HomePage extends Laya.Script {
     
     onDestroy(): void {
         console.log("HomePage onDestroy");
+        // 重置超级子弹模式 - 使用新的基于type的方式
+        console.log("主页销毁时重置子弹类型");
+        setCurrentBulletType(BulletType.DEFAULT);
+        console.log("子弹类型已重置: currentBulletType=", getCurrentBulletType());
         // 清理所有事件监听
         this.owner.offAll();
     }
