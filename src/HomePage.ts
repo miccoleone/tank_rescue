@@ -310,17 +310,6 @@ export class HomePage extends Laya.Script {
         });
         avatarContainer.addChild(editButton);
 
-        // 创建军衔显示
-        const militaryRankText = new Laya.Text();
-        militaryRankText.name = "MilitaryRank";
-        militaryRankText.text = Achievement.instance.getCurrentRankInfo_junxian().rank;
-        militaryRankText.fontSize = Math.floor(avatar.height * 0.7);
-        militaryRankText.color = "#4CAF50";
-        militaryRankText.x = editButton.x + editButton.width + Math.floor(MARGIN * 0.2);  // 在编辑按钮右边，留一些间距
-        militaryRankText.y = nameText.y;  // 与名字在同一行
-        
-        avatarContainer.addChild(militaryRankText);
-        
         // 创建今日战绩容器
         const todayStatsContainer = new Laya.Sprite();
         todayStatsContainer.name = "TodayStatsContainer";
@@ -363,23 +352,25 @@ export class HomePage extends Laya.Script {
         
         // 创建今日最高分数
         const todayScoreText = new Laya.Text();
-        todayScoreText.text = `最高分数: ${currentPlayerData.score}`;
+        todayScoreText.text = `最高得分: ${currentPlayerData.score}`;
         todayScoreText.fontSize = Math.floor(avatar.height * 0.5);
         todayScoreText.color = "#ffffff";
         todayScoreText.stroke = 2;  // 添加描边
         todayScoreText.y = rankContainer.y + rankText.fontSize + MARGIN * 0.5;  // 使用rankText.fontSize代替rankIcon.height
         
-        // 创建今日排名
+        // 替换今日排名为救援模式数据
+        const bestRescueCount = Laya.LocalStorage.getItem("bestRescueCount") || "0";
         const todayRankText = new Laya.Text();
-        todayRankText.text = `今日排名: ${currentPlayerData.rank}`;
+        todayRankText.text = `救援 ${bestRescueCount}名士兵🪖`;
         todayRankText.fontSize = todayScoreText.fontSize;
         todayRankText.color = "#ffffff";
         todayRankText.stroke = 2;  // 添加描边
         todayRankText.y = todayScoreText.y + todayScoreText.fontSize + MARGIN * 0.5;  // 增加行间距
         
-        // 创建超越百分比
+        // 替换超越百分比为军衔数据
+        const playerRankInfo = Achievement.instance.getCurrentRankInfo_junxian();
         const todayPercentText = new Laya.Text();
-        todayPercentText.text = `超越了${currentPlayerData.percentile}%的玩家`;
+        todayPercentText.text = `军衔：${playerRankInfo.rank}`;
         todayPercentText.fontSize = todayScoreText.fontSize;
         todayPercentText.color = "#4CAF50";
         todayPercentText.stroke = 2;  // 添加描边
