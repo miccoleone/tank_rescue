@@ -485,10 +485,10 @@ export class EndlessModeGame extends Laya.Script {
      */
     private resetFiring(): void {
         this.isFiring = false;
-        // 立即回正到摇杆方向，实现"松手即回正"的丝滑感
-        if (this.tank && !this.tank.destroyed) {
-            this.tank.rotation = this.currentJoystickAngle;
-        }
+        // 不再回正到摇杆方向，保持当前瞄准角度
+        // if (this.tank && !this.tank.destroyed) {
+        //     this.tank.rotation = this.currentJoystickAngle;
+        // }
     }
 
     private fireBullet(): void {
