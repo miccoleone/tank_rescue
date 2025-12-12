@@ -199,7 +199,7 @@ export class EndlessModeGame extends Laya.Script {
         this.initJoystick();
         // 初始化开火按钮
         this.initFireButton();
-        // 初始化激励视频广告按钮
+        // 初始化超级子弹广告按钮
         this.initRewardAdButton();
         // 初始化积分和段位显示
         this.initScoreDisplay();
@@ -329,7 +329,7 @@ export class EndlessModeGame extends Laya.Script {
     }
 
     /**
-     * 初始化激励视频广告按钮
+     * 初始化超级子弹激励视频广告按钮
      */
     private initRewardAdButton(): void {
         // 创建广告按钮容器
@@ -352,10 +352,11 @@ export class EndlessModeGame extends Laya.Script {
         // 创建图标
         const icon = new Laya.Image();
         icon.skin = "resources/Retina/barrelBlack_side.png";
-        icon.width = 60;   // 图标半径为30
-        icon.height = 60;
-        icon.pivot(30, 30); // 设置轴心点为中心
+        icon.width = 40;   // 图标半径为30
+        icon.height = 56;
+        icon.pivot(20, 28); // 设置轴心点为中心
         icon.alpha = 0.8;
+        icon.rotation = 45;
         adButtonContainer.addChild(icon);
 
         // 设置按钮位置：水平方向距离右侧0.1，垂直方向居中
