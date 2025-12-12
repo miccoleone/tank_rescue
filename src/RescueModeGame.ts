@@ -709,6 +709,9 @@ export class RescueModeGame extends Laya.Script {
         if (typeof wx !== 'undefined' && this.videoAd) {
             console.log("正在拉起激励视频广告...");
             
+            // 暂停游戏逻辑
+            this.pauseGameLogic();
+            
             // 显示微信广告
             this.videoAd.show().catch(() => {
                 // 失败重试一次
@@ -719,6 +722,8 @@ export class RescueModeGame extends Laya.Script {
                     .catch(() => {
                         console.error('激励视频广告显示失败');
                         this.popupPanel?.showMessage("广告加载失败，请稍后再试", "提示");
+                        // 广告显示失败，恢复游戏
+                        this.resumeGameLogic();
                     });
             });
             
@@ -728,6 +733,9 @@ export class RescueModeGame extends Laya.Script {
                 // 取消监听，避免多次触发
                 this.videoAd.offClose();
                 console.log("激励视频广告关闭", res);
+                
+                // 恢复游戏逻辑
+                this.resumeGameLogic();
                 
                 // 用户完整观看广告
                 // @ts-ignore
@@ -740,7 +748,7 @@ export class RescueModeGame extends Laya.Script {
                     this.applyPremiumTankSkin();
                 } else {
                     console.log("激励视频广告未完整观看");
-                    this.popupPanel?.showFadeNotification("需要完整观看广告才能获得奖励", 2000, "#FF0000");
+                    this.popupPanel?.showFadeNotification("超级坦克和超级子弹未获得", 2000, "#FF0000");
                 }
             });
         } else {
@@ -2039,6 +2047,9 @@ export class RescueModeGame extends Laya.Script {
                     if (res && res.isEnded || res === undefined) {
                         console.log("广告观看完成，复活玩家");
                         
+                        // 显示获得奖励的提示
+                        this.popupPanel?.showFadeNotification("获得超级子弹和超级皮肤！", 2000, "#FFD700");
+                        
                         // 重置所有驾驶员的计时器为完整的6秒
                         PilotPool.resetAllPilotsTimer(this.gameBox);
                         
@@ -2066,6 +2077,9 @@ export class RescueModeGame extends Laya.Script {
             } else {
                 console.log("非微信环境，直接复活");
                 // 非微信环境，直接允许复活（开发测试用）
+                
+                // 显示获得奖励的提示
+                this.popupPanel?.showFadeNotification("获得超级子弹和超级皮肤！", 2000, "#FFD700");
                 
                 // 重置所有驾驶员的计时器为完整的6秒
                 PilotPool.resetAllPilotsTimer(this.gameBox);
